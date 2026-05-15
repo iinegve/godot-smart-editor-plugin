@@ -1,0 +1,81 @@
+extends GdUnitTestSuite
+
+const SelectionParser := preload("res://addons/smart-editor-plugin/gdscript_selection_parser.gd")
+const SmartSelectionRange := preload("res://addons/smart-editor-plugin/smart_selection_range.gd")
+
+
+func _assert_expansions(test_case: Dictionary) -> void:
+	var parser := SelectionParser.new()
+	var caret: Vector2i = test_case["caret"]
+	var current := {
+		"from_line": caret.x,
+		"from_col": caret.y,
+		"to_line": caret.x,
+		"to_col": caret.y,
+	}
+	var candidates := parser.build_candidates(test_case["code"], current)
+	var actual: Array[String] = []
+	for candidate in candidates:
+		actual.append(_slice_range(test_case["code"], candidate))
+
+	assert_array(actual).is_equal(test_case["expected"])
+
+
+func _assert_first_plugin_expansion(test_case: Dictionary) -> void:
+	var parser := SelectionParser.new()
+	var caret: Vector2i = test_case["caret"]
+	var current := {
+		"from_line": caret.x,
+		"from_col": caret.y,
+		"to_line": caret.x,
+		"to_col": caret.y,
+	}
+
+	for candidate in parser.build_candidates(test_case["code"], current):
+		if _range_strictly_contains(candidate, current):
+			assert_str(_slice_range(test_case["code"], candidate)).is_equal(test_case["expected"])
+			return
+
+	fail("No plugin-style expansion candidate found.")
+
+
+func _assert_next_plugin_expansion(test_case: Dictionary) -> void:
+	var parser := SelectionParser.new()
+	var current: Dictionary = test_case["current"]
+
+	for candidate in parser.build_candidates(test_case["code"], current):
+		if _range_strictly_contains(candidate, current):
+			assert_str(_slice_range(test_case["code"], candidate)).is_equal(test_case["expected"])
+			return
+
+	fail("No plugin-style expansion candidate found.")
+
+
+func _slice_range(text: String, selection_range: Dictionary) -> String:
+	var lines := text.split("\n", true)
+	var from_line := int(selection_range["from_line"])
+	var from_col := int(selection_range["from_col"])
+	var to_line := int(selection_range["to_line"])
+	var to_col := int(selection_range["to_col"])
+
+	if from_line == to_line:
+		return String(lines[from_line]).substr(from_col, to_col - from_col)
+
+	var parts: Array[String] = []
+	parts.append(String(lines[from_line]).substr(from_col))
+	for line_index in range(from_line + 1, to_line):
+		parts.append(lines[line_index])
+	parts.append(String(lines[to_line]).substr(0, to_col))
+	return "\n".join(parts)
+
+
+func _range_strictly_contains(outer: Dictionary, inner: Dictionary) -> bool:
+	return SmartSelectionRange.strictly_contains(outer, inner)
+
+
+func _ranges_equal(a: Dictionary, b: Dictionary) -> bool:
+	return SmartSelectionRange.equal(a, b)
+
+
+func _compare_positions(line_a: int, col_a: int, line_b: int, col_b: int) -> int:
+	return SmartSelectionRange.compare_positions(line_a, col_a, line_b, col_b)

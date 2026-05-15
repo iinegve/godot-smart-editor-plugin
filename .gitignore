@@ -1,0 +1,18 @@
+# Godot local editor/cache data.
+.godot/
+
+# GdUnit and other test runner artifacts.
+reports/
+coverage/
+
+# Runtime logs and crash dumps.
+*.log
+*.tmp
+*.temp
+crash_*.txt
+
+# OS/editor noise.
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
