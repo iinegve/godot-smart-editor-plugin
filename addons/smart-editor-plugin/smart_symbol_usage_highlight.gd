@@ -63,20 +63,17 @@ func attach_to_code(code: CodeEdit) -> void:
 	_connect_scrollbars()
 	_invalidate_rect_cache()
 
-
 func set_usage_references(references: Array[Dictionary], line_count: int, current_reference: Dictionary) -> void:
 	_references = references.duplicate()
 	_line_count = line_count
 	_current_reference = current_reference.duplicate()
 	_invalidate_rect_cache()
 
-
 func clear_references() -> void:
 	_references.clear()
 	_line_count = 0
 	_current_reference.clear()
 	_invalidate_rect_cache()
-
 
 func _draw() -> void:
 	if _code == null or not is_instance_valid(_code) or _line_count <= 0:
@@ -143,10 +140,8 @@ func _reference_rect(reference: Dictionary) -> Rect2:
 
 	return rect
 
-
 func _rect_lookup_column(column: int, line_text: String) -> int:
 	return clampi(column + CODE_RECT_COLUMN_OFFSET, 0, line_text.length())
-
 
 func _code_rect_to_overlay_rect(code_rect: Rect2) -> Rect2:
 	if _code == null or not is_instance_valid(_code):
@@ -157,7 +152,6 @@ func _code_rect_to_overlay_rect(code_rect: Rect2) -> Rect2:
 	var start: Vector2 = overlay_inverse * (code_transform * code_rect.position)
 	var end: Vector2 = overlay_inverse * (code_transform * (code_rect.position + code_rect.size))
 	return Rect2(start, end - start).abs()
-
 
 func _visible_line_range() -> Vector2i:
 	if _code == null or not is_instance_valid(_code):

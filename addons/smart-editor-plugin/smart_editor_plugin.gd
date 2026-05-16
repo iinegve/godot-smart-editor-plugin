@@ -4,6 +4,8 @@ extends EditorPlugin
 const GDScriptSelectionParser := preload("res://addons/smart-editor-plugin/gdscript_selection_parser.gd")
 const SmartSelectionHistory := preload("res://addons/smart-editor-plugin/smart_selection_history.gd")
 const SmartSelectionRange := preload("res://addons/smart-editor-plugin/smart_selection_range.gd")
+const SmartFunctionBoundaryGuides := preload("res://addons/smart-editor-plugin/smart_function_boundary_guides.gd")
+const SmartFunctionBoundaryGuidesController := preload("res://addons/smart-editor-plugin/smart_function_boundary_guides_controller.gd")
 const SmartSymbolUsageHighlight := preload("res://addons/smart-editor-plugin/smart_symbol_usage_highlight.gd")
 const SmartSymbolUsageController := preload("res://addons/smart-editor-plugin/smart_symbol_usage_controller.gd")
 const SETTINGS_PREFIX := &"plugin/smart_editor/"
@@ -13,6 +15,8 @@ const SETTING_SYMBOL_USAGE_STRIPE_ENABLED := SETTINGS_PREFIX + &"symbol_usage_st
 const SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR := SETTINGS_PREFIX + &"symbol_usage_highlight_color"
 const SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR := SETTINGS_PREFIX + &"symbol_usage_current_highlight_color"
 const SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR := SETTINGS_PREFIX + &"symbol_usage_current_outline_color"
+const SETTING_FUNCTION_BOUNDARY_GUIDES_ENABLED := SETTINGS_PREFIX + &"function_boundary_guides_enabled"
+const SETTING_FUNCTION_BOUNDARY_GUIDE_COLOR := SETTINGS_PREFIX + &"function_boundary_guide_color"
 const SETTING_EXPAND_SHORTCUT := SETTINGS_PREFIX + &"expand_selection"
 const SETTING_SHRINK_SHORTCUT := SETTINGS_PREFIX + &"shrink_selection"
 const SETTING_EXTRACT_SHORTCUT := SETTINGS_PREFIX + &"extract_local_variable"
@@ -66,12 +70,14 @@ var _inline_opened_documents := {}
 var _inline_document_versions := {}
 var _expand_selection_history := SmartSelectionHistory.new()
 var _symbol_usage_controller = null
+var _function_boundary_guides_controller = null
 
 
 func _enter_tree() -> void:
 	_init_settings()
 	_create_extract_dialog()
 	_create_rename_dialog()
+	_create_function_boundary_guides_controller()
 	_create_symbol_usage_controller()
 	set_process_shortcut_input(true)
 	set_process(true)
@@ -84,6 +90,8 @@ func _exit_tree() -> void:
 		_rename_dialog.queue_free()
 	if _symbol_usage_controller != null:
 		_symbol_usage_controller.queue_free()
+	if _function_boundary_guides_controller != null:
+		_function_boundary_guides_controller.queue_free()
 	_rename_tcp.disconnect_from_host()
 	_inline_tcp.disconnect_from_host()
 
@@ -133,6 +141,8 @@ func _init_settings() -> void:
 	_init_setting(SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR, SmartSymbolUsageHighlight.DEFAULT_HIGHLIGHT_COLOR, TYPE_COLOR)
 	_init_setting(SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR, SmartSymbolUsageHighlight.DEFAULT_CURRENT_HIGHLIGHT_COLOR, TYPE_COLOR)
 	_init_setting(SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR, SmartSymbolUsageHighlight.DEFAULT_CURRENT_OUTLINE_COLOR, TYPE_COLOR)
+	_init_setting(SETTING_FUNCTION_BOUNDARY_GUIDES_ENABLED, true, TYPE_BOOL)
+	_init_setting(SETTING_FUNCTION_BOUNDARY_GUIDE_COLOR, SmartFunctionBoundaryGuides.DEFAULT_GUIDE_COLOR, TYPE_COLOR)
 	_init_shortcut_setting(SETTING_EXPAND_SHORTCUT, _make_shortcut(KEY_D, true, false))
 	_init_shortcut_setting(SETTING_SHRINK_SHORTCUT, _make_shortcut(KEY_D, true, false, false, true))
 	_init_shortcut_setting(SETTING_EXTRACT_SHORTCUT, _make_shortcut(KEY_V, true, true))
@@ -254,6 +264,15 @@ func _create_symbol_usage_controller() -> void:
 		SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR,
 		SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR,
 		SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR
+	)
+
+
+func _create_function_boundary_guides_controller() -> void:
+	_function_boundary_guides_controller = SmartFunctionBoundaryGuidesController.new()
+	add_child(_function_boundary_guides_controller)
+	_function_boundary_guides_controller.configure(
+		SETTING_FUNCTION_BOUNDARY_GUIDES_ENABLED,
+		SETTING_FUNCTION_BOUNDARY_GUIDE_COLOR
 	)
 
 
@@ -1420,11 +1439,9 @@ func _ranges_equal(a: Dictionary, b: Dictionary) -> bool:
 func _compare_positions(line_a: int, col_a: int, line_b: int, col_b: int) -> int:
 	return SmartSelectionRange.compare_positions(line_a, col_a, line_b, col_b)
 
-
 func _debug_rename(message: String) -> void:
 	if _debug_logs_enabled():
 		print("Rename Symbol: " + message)
-
 
 func _debug_inline(message: String) -> void:
 	if _debug_logs_enabled():
