@@ -2,6 +2,114 @@
 extends RefCounted
 
 const IDENTIFIER_CHARS := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+const LANGUAGE_SYMBOLS := {
+	"and": true,
+	"as": true,
+	"assert": true,
+	"await": true,
+	"break": true,
+	"breakpoint": true,
+	"class": true,
+	"class_name": true,
+	"const": true,
+	"continue": true,
+	"elif": true,
+	"else": true,
+	"enum": true,
+	"export": true,
+	"export_category": true,
+	"export_color_no_alpha": true,
+	"export_custom": true,
+	"export_dir": true,
+	"export_enum": true,
+	"export_exp_easing": true,
+	"export_file": true,
+	"export_flags": true,
+	"export_flags_2d_navigation": true,
+	"export_flags_2d_physics": true,
+	"export_flags_2d_render": true,
+	"export_flags_3d_navigation": true,
+	"export_flags_3d_physics": true,
+	"export_flags_3d_render": true,
+	"export_flags_avoidance": true,
+	"export_global_dir": true,
+	"export_global_file": true,
+	"export_group": true,
+	"export_multiline": true,
+	"export_node_path": true,
+	"export_placeholder": true,
+	"export_range": true,
+	"export_storage": true,
+	"export_subgroup": true,
+	"extends": true,
+	"false": true,
+	"for": true,
+	"func": true,
+	"icon": true,
+	"if": true,
+	"in": true,
+	"is": true,
+	"match": true,
+	"not": true,
+	"null": true,
+	"onready": true,
+	"or": true,
+	"pass": true,
+	"return": true,
+	"rpc": true,
+	"self": true,
+	"signal": true,
+	"static": true,
+	"static_unload": true,
+	"super": true,
+	"tool": true,
+	"true": true,
+	"var": true,
+	"void": true,
+	"warning_ignore": true,
+	"warning_ignore_restore": true,
+	"warning_ignore_start": true,
+	"while": true,
+	"AABB": true,
+	"Array": true,
+	"Basis": true,
+	"Callable": true,
+	"Color": true,
+	"Dictionary": true,
+	"NodePath": true,
+	"Object": true,
+	"PackedByteArray": true,
+	"PackedColorArray": true,
+	"PackedFloat32Array": true,
+	"PackedFloat64Array": true,
+	"PackedInt32Array": true,
+	"PackedInt64Array": true,
+	"PackedStringArray": true,
+	"PackedVector2Array": true,
+	"PackedVector3Array": true,
+	"PackedVector4Array": true,
+	"Plane": true,
+	"Projection": true,
+	"Quaternion": true,
+	"RID": true,
+	"Rect2": true,
+	"Rect2i": true,
+	"Signal": true,
+	"String": true,
+	"StringName": true,
+	"Transform2D": true,
+	"Transform3D": true,
+	"Variant": true,
+	"Vector2": true,
+	"Vector2i": true,
+	"Vector3": true,
+	"Vector3i": true,
+	"Vector4": true,
+	"Vector4i": true,
+	"bool": true,
+	"float": true,
+	"int": true,
+}
 
 
 static func symbol_range_in_line(line: String, line_index: int, caret_column: int) -> Dictionary:
@@ -12,7 +120,7 @@ static func symbol_range_in_line(line: String, line_index: int, caret_column: in
 	if probe_col == line.length() and probe_col > 0:
 		probe_col -= 1
 	elif probe_col < line.length() and not _is_identifier_char(line[probe_col]):
-		if line[probe_col] == "." or probe_col == 0 or not _is_identifier_char(line[probe_col - 1]):
+		if probe_col == 0 or not _is_identifier_char(line[probe_col - 1]):
 			return {}
 		probe_col -= 1
 
@@ -30,12 +138,29 @@ static func symbol_range_in_line(line: String, line_index: int, caret_column: in
 	while end < line.length() and _is_identifier_char(line[end]):
 		end += 1
 
+	var symbol := line.substr(start, end - start)
+	if _is_language_symbol(symbol):
+		return {}
+
 	return {
-		"symbol": line.substr(start, end - start),
+		"symbol": symbol,
 		"line": line_index,
 		"column": start,
 		"end_column": end,
 	}
+
+
+static func is_member_call_symbol(line: String, symbol_column: int, end_column: int) -> bool:
+	if symbol_column <= 0 or symbol_column > line.length():
+		return false
+	if line[symbol_column - 1] != ".":
+		return false
+
+	var probe_column := clampi(end_column, 0, line.length())
+	while probe_column < line.length() and line[probe_column] == " ":
+		probe_column += 1
+
+	return probe_column < line.length() and line[probe_column] == "("
 
 
 static func references_for_uri(references: Variant, uri: String) -> Array[Dictionary]:
@@ -54,7 +179,7 @@ static func references_for_uri(references: Variant, uri: String) -> Array[Dictio
 
 static func references_for_symbol_in_text(text: String, symbol: String) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	if symbol.is_empty() or not _is_identifier_start_char(symbol[0]):
+	if symbol.is_empty() or not _is_identifier_start_char(symbol[0]) or _is_language_symbol(symbol):
 		return result
 
 	var lines := text.split("\n", true)
@@ -236,3 +361,7 @@ static func _is_identifier_start_char(ch: String) -> bool:
 
 static func _is_identifier_char(ch: String) -> bool:
 	return IDENTIFIER_CHARS.contains(ch)
+
+
+static func _is_language_symbol(symbol: String) -> bool:
+	return LANGUAGE_SYMBOLS.has(symbol)

@@ -2,23 +2,31 @@
 extends Node
 
 const SymbolUsageModel := preload("res://addons/smart-editor-plugin/smart_symbol_usage_model.gd")
+const SymbolUsageHighlight := preload("res://addons/smart-editor-plugin/smart_symbol_usage_highlight.gd")
 const SymbolUsageStripe := preload("res://addons/smart-editor-plugin/smart_symbol_usage_stripe.gd")
 const STRIPE_WIDTH := 8.0
-const DEBOUNCE_SECONDS := 0.25
+const CARET_DEBOUNCE_SECONDS := 0.05
+const TEXT_DEBOUNCE_SECONDS := 0.40
 
 var _enabled_setting: StringName = &""
 var _debug_setting: StringName = &""
+var _highlight_color_setting: StringName = &""
+var _current_highlight_color_setting: StringName = &""
+var _current_outline_color_setting: StringName = &""
 var _host := "127.0.0.1"
 var _port := 6005
 var _script_editor = null
 var _code: CodeEdit
+var _highlight = null
 var _stripe = null
 var _script_path := ""
 var _uri := ""
 var _refresh_pending := false
 var _debounce_remaining := 0.0
+var _text_change_pending := false
 var _current_symbol_key := ""
 var _request_generation := 0
+var _overlays_dirty := false
 
 var _tcp := StreamPeerTCP.new()
 var _read_buffer := PackedByteArray()
@@ -31,15 +39,26 @@ var _opened_documents := {}
 var _document_versions := {}
 
 
-func configure(enabled_setting: StringName, debug_setting: StringName, host: String, port: int) -> void:
+func configure(
+	enabled_setting: StringName,
+	debug_setting: StringName,
+	host: String,
+	port: int,
+	highlight_color_setting: StringName = &"",
+	current_highlight_color_setting: StringName = &"",
+	current_outline_color_setting: StringName = &""
+) -> void:
 	_enabled_setting = enabled_setting
 	_debug_setting = debug_setting
 	_host = host
 	_port = port
+	_highlight_color_setting = highlight_color_setting
+	_current_highlight_color_setting = current_highlight_color_setting
+	_current_outline_color_setting = current_outline_color_setting
 	set_process(true)
 	_connect_script_editor()
 	_attach_to_current_code_edit()
-	_schedule_refresh()
+	_schedule_caret_refresh()
 
 
 func _exit_tree() -> void:
@@ -58,13 +77,15 @@ func _process(delta: float) -> void:
 
 	_connect_script_editor()
 	_attach_to_current_code_edit()
-	_layout_stripe()
+	if _overlays_dirty:
+		_layout_overlays()
 	_process_connection()
 
 	if _refresh_pending:
 		_debounce_remaining -= delta
 		if _debounce_remaining <= 0.0:
 			_refresh_pending = false
+			_text_change_pending = false
 			_refresh_references()
 
 
@@ -108,12 +129,22 @@ func _attach_to_current_code_edit() -> void:
 	_code.text_changed.connect(_on_code_text_changed)
 	_code.resized.connect(_on_code_resized)
 
+	_highlight = SymbolUsageHighlight.new()
+	_highlight.name = "SmartSymbolUsageHighlight"
+	_highlight.configure(
+		_highlight_color_setting,
+		_current_highlight_color_setting,
+		_current_outline_color_setting
+	)
+	_code.add_child(_highlight)
+	_highlight.attach_to_code(_code)
+
 	_stripe = SymbolUsageStripe.new()
 	_stripe.name = "SmartSymbolUsageStripe"
 	_stripe.usage_clicked.connect(_on_stripe_usage_clicked)
 	_code.add_child(_stripe)
-	_layout_stripe()
-	_schedule_refresh()
+	_layout_overlays()
+	_schedule_caret_refresh()
 
 
 func _detach_code_edit() -> void:
@@ -127,26 +158,40 @@ func _detach_code_edit() -> void:
 
 	if _stripe != null and is_instance_valid(_stripe):
 		_stripe.queue_free()
+	if _highlight != null and is_instance_valid(_highlight):
+		_highlight.queue_free()
 
 	_code = null
+	_highlight = null
 	_stripe = null
 	_script_path = ""
 	_uri = ""
 	_current_symbol_key = ""
 	_refresh_pending = false
+	_text_change_pending = false
 	_queued_request.clear()
+	_overlays_dirty = false
 
 
 func _disable_feature() -> void:
-	if _code != null or _stripe != null:
+	if _code != null or _stripe != null or _highlight != null:
 		_detach_code_edit()
 	if _tcp.get_status() != StreamPeerTCP.STATUS_NONE:
 		_reset_connection()
 
 
-func _schedule_refresh() -> void:
+func _schedule_caret_refresh() -> void:
+	if _text_change_pending:
+		return
+
 	_refresh_pending = true
-	_debounce_remaining = DEBOUNCE_SECONDS
+	_debounce_remaining = CARET_DEBOUNCE_SECONDS
+
+
+func _schedule_text_refresh() -> void:
+	_refresh_pending = true
+	_text_change_pending = true
+	_debounce_remaining = TEXT_DEBOUNCE_SECONDS
 
 
 func _refresh_references() -> void:
@@ -154,8 +199,9 @@ func _refresh_references() -> void:
 		_clear_references()
 		return
 
+	var caret_line := _code.get_line(_code.get_caret_line())
 	var symbol_range := SymbolUsageModel.symbol_range_in_line(
-		_code.get_line(_code.get_caret_line()),
+		caret_line,
 		_code.get_caret_line(),
 		_code.get_caret_column()
 	)
@@ -189,6 +235,11 @@ func _refresh_references() -> void:
 		"end_column": symbol_range["end_column"],
 		"code_version": code_version,
 		"generation": _request_generation,
+		"is_member_call": SymbolUsageModel.is_member_call_symbol(
+			caret_line,
+			int(symbol_range["column"]),
+			int(symbol_range["end_column"])
+		),
 	}
 
 	if not _ensure_connection():
@@ -274,6 +325,8 @@ func _send_initialized_notification() -> void:
 
 func _try_send_references_request() -> void:
 	if _queued_request.is_empty() or not _initialized:
+		return
+	if _has_pending_reference_request():
 		return
 
 	var request := _queued_request.duplicate()
@@ -417,11 +470,17 @@ func _apply_references(references: Variant, request: Dictionary) -> void:
 		_apply_fallback_references(request)
 		return
 
-	_stripe.set_usage_references(filtered_references, _code.get_line_count(), current_reference)
+	filtered_references = _references_including_current(filtered_references, current_reference)
+	_set_usage_references(filtered_references, _code.get_line_count(), current_reference)
 
 
 func _apply_fallback_references(request: Dictionary) -> void:
 	if not _request_matches_current(request):
+		return
+
+	if bool(request.get("is_member_call", false)):
+		_debug("skipping token fallback for member method call.")
+		_clear_references()
 		return
 
 	var fallback_references := SymbolUsageModel.references_for_symbol_in_text(
@@ -433,7 +492,7 @@ func _apply_fallback_references(request: Dictionary) -> void:
 		_clear_references()
 		return
 
-	_stripe.set_usage_references(fallback_references, _code.get_line_count(), {
+	_set_usage_references(fallback_references, _code.get_line_count(), {
 		"line": int(request["line"]),
 		"column": int(request["column"]),
 		"end_line": int(request["end_line"]),
@@ -464,19 +523,23 @@ func _request_matches_current(request: Dictionary) -> bool:
 
 func _on_editor_script_changed(_script: Script) -> void:
 	_attach_to_current_code_edit()
-	_schedule_refresh()
+	_schedule_caret_refresh()
 
 
 func _on_code_caret_changed() -> void:
-	_schedule_refresh()
+	_schedule_caret_refresh()
 
 
 func _on_code_text_changed() -> void:
-	_schedule_refresh()
+	_request_generation += 1
+	_current_symbol_key = ""
+	_queued_request.clear()
+	_clear_references()
+	_schedule_text_refresh()
 
 
 func _on_code_resized() -> void:
-	_layout_stripe()
+	_overlays_dirty = true
 
 
 func _on_stripe_usage_clicked(reference: Dictionary) -> void:
@@ -489,6 +552,27 @@ func _on_stripe_usage_clicked(reference: Dictionary) -> void:
 	_code.set_caret_column(column)
 	_code.center_viewport_to_caret()
 	_code.grab_focus()
+
+
+func _layout_overlays() -> void:
+	_layout_highlight()
+	_layout_stripe()
+	_overlays_dirty = false
+
+
+func _layout_highlight() -> void:
+	if _code == null or _highlight == null or not is_instance_valid(_code) or not is_instance_valid(_highlight):
+		return
+
+	_highlight.anchor_left = 0.0
+	_highlight.anchor_right = 1.0
+	_highlight.anchor_top = 0.0
+	_highlight.anchor_bottom = 1.0
+	_highlight.offset_left = 0.0
+	_highlight.offset_right = 0.0
+	_highlight.offset_top = 0.0
+	_highlight.offset_bottom = 0.0
+	_highlight.z_index = 10
 
 
 func _layout_stripe() -> void:
@@ -511,9 +595,51 @@ func _layout_stripe() -> void:
 	_stripe.z_index = 20
 
 
+func _set_usage_references(references: Array[Dictionary], line_count: int, current_reference: Dictionary) -> void:
+	if _stripe != null and is_instance_valid(_stripe):
+		_stripe.set_usage_references(references, line_count, current_reference)
+	if _highlight != null and is_instance_valid(_highlight):
+		_highlight.set_usage_references(references, line_count, current_reference)
+
+
 func _clear_references() -> void:
 	if _stripe != null and is_instance_valid(_stripe):
 		_stripe.clear_references()
+	if _highlight != null and is_instance_valid(_highlight):
+		_highlight.clear_references()
+
+
+func _references_including_current(references: Array[Dictionary], current_reference: Dictionary) -> Array[Dictionary]:
+	var result := references.duplicate()
+	for reference in result:
+		if SymbolUsageModel.same_position(reference, current_reference):
+			return result
+
+	for index in result.size():
+		if _compare_reference_positions(current_reference, result[index]) < 0:
+			result.insert(index, current_reference.duplicate())
+			return result
+
+	result.append(current_reference.duplicate())
+	return result
+
+
+func _compare_reference_positions(a: Dictionary, b: Dictionary) -> int:
+	var line_delta := int(a.get("line", 0)) - int(b.get("line", 0))
+	if line_delta != 0:
+		return line_delta
+
+	return int(a.get("column", 0)) - int(b.get("column", 0))
+
+
+func _has_pending_reference_request() -> bool:
+	for request in _pending_requests.values():
+		if typeof(request) != TYPE_DICTIONARY:
+			continue
+		if str(request.get("request_kind", "references")) == "references":
+			return true
+
+	return false
 
 
 func _reset_connection() -> void:

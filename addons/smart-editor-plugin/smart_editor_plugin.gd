@@ -4,11 +4,15 @@ extends EditorPlugin
 const GDScriptSelectionParser := preload("res://addons/smart-editor-plugin/gdscript_selection_parser.gd")
 const SmartSelectionHistory := preload("res://addons/smart-editor-plugin/smart_selection_history.gd")
 const SmartSelectionRange := preload("res://addons/smart-editor-plugin/smart_selection_range.gd")
+const SmartSymbolUsageHighlight := preload("res://addons/smart-editor-plugin/smart_symbol_usage_highlight.gd")
 const SmartSymbolUsageController := preload("res://addons/smart-editor-plugin/smart_symbol_usage_controller.gd")
 const SETTINGS_PREFIX := &"plugin/smart_editor/"
 const SETTING_DIALOG_WIDTH := SETTINGS_PREFIX + &"dialog_width"
 const SETTING_DEBUG_LOGS := SETTINGS_PREFIX + &"debug_logs"
 const SETTING_SYMBOL_USAGE_STRIPE_ENABLED := SETTINGS_PREFIX + &"symbol_usage_stripe_enabled"
+const SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR := SETTINGS_PREFIX + &"symbol_usage_highlight_color"
+const SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR := SETTINGS_PREFIX + &"symbol_usage_current_highlight_color"
+const SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR := SETTINGS_PREFIX + &"symbol_usage_current_outline_color"
 const SETTING_EXPAND_SHORTCUT := SETTINGS_PREFIX + &"expand_selection"
 const SETTING_SHRINK_SHORTCUT := SETTINGS_PREFIX + &"shrink_selection"
 const SETTING_EXTRACT_SHORTCUT := SETTINGS_PREFIX + &"extract_local_variable"
@@ -126,6 +130,9 @@ func _init_settings() -> void:
 	_init_setting(SETTING_DIALOG_WIDTH, 420, TYPE_INT, PROPERTY_HINT_RANGE, "300,900,10")
 	_init_setting(SETTING_DEBUG_LOGS, false, TYPE_BOOL)
 	_init_setting(SETTING_SYMBOL_USAGE_STRIPE_ENABLED, true, TYPE_BOOL)
+	_init_setting(SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR, SmartSymbolUsageHighlight.DEFAULT_HIGHLIGHT_COLOR, TYPE_COLOR)
+	_init_setting(SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR, SmartSymbolUsageHighlight.DEFAULT_CURRENT_HIGHLIGHT_COLOR, TYPE_COLOR)
+	_init_setting(SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR, SmartSymbolUsageHighlight.DEFAULT_CURRENT_OUTLINE_COLOR, TYPE_COLOR)
 	_init_shortcut_setting(SETTING_EXPAND_SHORTCUT, _make_shortcut(KEY_D, true, false))
 	_init_shortcut_setting(SETTING_SHRINK_SHORTCUT, _make_shortcut(KEY_D, true, false, false, true))
 	_init_shortcut_setting(SETTING_EXTRACT_SHORTCUT, _make_shortcut(KEY_V, true, true))
@@ -239,7 +246,15 @@ func _create_rename_dialog() -> void:
 func _create_symbol_usage_controller() -> void:
 	_symbol_usage_controller = SmartSymbolUsageController.new()
 	add_child(_symbol_usage_controller)
-	_symbol_usage_controller.configure(SETTING_SYMBOL_USAGE_STRIPE_ENABLED, SETTING_DEBUG_LOGS, HOST, PORT)
+	_symbol_usage_controller.configure(
+		SETTING_SYMBOL_USAGE_STRIPE_ENABLED,
+		SETTING_DEBUG_LOGS,
+		HOST,
+		PORT,
+		SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR,
+		SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR,
+		SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR
+	)
 
 
 func _expand_selection(code: CodeEdit) -> void:

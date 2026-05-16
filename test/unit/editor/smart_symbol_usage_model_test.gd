@@ -20,8 +20,58 @@ func test_symbol_range_under_caret_finds_identifier_before_or_inside_caret() -> 
 	})
 
 
-func test_symbol_range_under_caret_returns_empty_for_non_identifier() -> void:
-	assert_dict(SymbolUsageModel.symbol_range_in_line("code.get_selected_text()", 0, 4)).is_empty()
+func test_symbol_range_under_caret_finds_for_loop_variable() -> void:
+	assert_dict(SymbolUsageModel.symbol_range_in_line("for reference in _references:", 0, 6)).is_equal({
+		"symbol": "reference",
+		"line": 0,
+		"column": 4,
+		"end_column": 13,
+	})
+
+
+func test_symbol_range_under_caret_finds_identifier_before_dot() -> void:
+	assert_dict(SymbolUsageModel.symbol_range_in_line("_current_reference.clear()", 0, 18)).is_equal({
+		"symbol": "_current_reference",
+		"line": 0,
+		"column": 0,
+		"end_column": 18,
+	})
+	assert_dict(SymbolUsageModel.symbol_range_in_line("code.get_selected_text()", 0, 4)).is_equal({
+		"symbol": "code",
+		"line": 0,
+		"column": 0,
+		"end_column": 4,
+	})
+
+
+func test_symbol_range_under_caret_returns_empty_for_non_identifier_without_left_identifier() -> void:
+	assert_dict(SymbolUsageModel.symbol_range_in_line(".get_selected_text()", 0, 0)).is_empty()
+
+
+func test_symbol_range_under_caret_returns_empty_for_language_keywords() -> void:
+	assert_dict(SymbolUsageModel.symbol_range_in_line("func refresh() -> void:", 0, 2)).is_empty()
+	assert_dict(SymbolUsageModel.symbol_range_in_line("var selected := code.get_selected_text()", 0, 1)).is_empty()
+	assert_dict(SymbolUsageModel.symbol_range_in_line("func refresh() -> void:", 0, 22)).is_empty()
+	assert_dict(SymbolUsageModel.symbol_range_in_line("@export var health := 10", 0, 3)).is_empty()
+
+
+func test_symbol_context_detects_member_call_symbols() -> void:
+	assert_bool(SymbolUsageModel.is_member_call_symbol("_references.clear()", 12, 17)).is_true()
+	assert_bool(SymbolUsageModel.is_member_call_symbol("clear()", 0, 5)).is_false()
+	assert_bool(SymbolUsageModel.is_member_call_symbol("GdUnitConstants.REPORT_DIR_PREFIX", 16, 33)).is_false()
+	assert_bool(SymbolUsageModel.is_member_call_symbol("button.pressed.connect(refresh)", 24, 31)).is_false()
+
+
+func test_references_for_symbol_in_text_returns_empty_for_language_keywords() -> void:
+	var code := "\n".join([
+		"func refresh() -> void:",
+		"\tvar value := 1",
+		"\treturn",
+	])
+
+	assert_array(SymbolUsageModel.references_for_symbol_in_text(code, "func")).is_empty()
+	assert_array(SymbolUsageModel.references_for_symbol_in_text(code, "var")).is_empty()
+	assert_array(SymbolUsageModel.references_for_symbol_in_text(code, "void")).is_empty()
 
 
 func test_references_for_uri_filters_and_sorts_lsp_references() -> void:
