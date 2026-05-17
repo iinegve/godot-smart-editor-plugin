@@ -14,6 +14,11 @@ config/name="Smart Editor Plugin"
 config/features=PackedStringArray("4.6")
 config/icon="res://icon.svg"
 
+[editor]
+
+version_control/plugin_name="GitPlugin"
+version_control/autoload_on_startup=true
+
 [editor_plugins]
 
 enabled=PackedStringArray("res://addons/script-ide/plugin.cfg", "res://addons/smart-editor-plugin/plugin.cfg", "res://addons/gdUnit4/plugin.cfg")
