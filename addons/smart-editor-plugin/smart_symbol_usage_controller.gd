@@ -326,6 +326,8 @@ func _send_initialized_notification() -> void:
 func _try_send_references_request() -> void:
 	if _queued_request.is_empty() or not _initialized:
 		return
+	if _refresh_pending:
+		return
 	if _has_pending_reference_request():
 		return
 

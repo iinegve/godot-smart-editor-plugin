@@ -49,6 +49,23 @@ func test_caret_changes_use_fast_debounce() -> void:
 	controller.free()
 
 
+func test_caret_changes_reset_existing_caret_debounce() -> void:
+	var controller := SymbolUsageController.new()
+
+	controller._on_code_caret_changed()
+	controller._debounce_remaining = 0.01
+	controller._on_code_caret_changed()
+
+	assert_bool(controller._refresh_pending).is_true()
+	assert_bool(controller._text_change_pending).is_false()
+	assert_float(controller._debounce_remaining).is_equal_approx(
+		SymbolUsageController.CARET_DEBOUNCE_SECONDS,
+		0.001
+	)
+
+	controller.free()
+
+
 func test_text_changes_clear_references_and_use_slow_debounce() -> void:
 	var stripe := FakeSymbolUsageView.new()
 	var highlight := FakeSymbolUsageView.new()
@@ -85,6 +102,24 @@ func test_caret_changes_do_not_shorten_pending_text_debounce() -> void:
 	assert_bool(controller._refresh_pending).is_true()
 	assert_bool(controller._text_change_pending).is_true()
 	assert_float(controller._debounce_remaining).is_equal_approx(0.5, 0.001)
+
+	controller.free()
+
+
+func test_reference_request_waits_for_pending_caret_debounce() -> void:
+	var controller := SymbolUsageController.new()
+	controller._initialized = true
+	controller._refresh_pending = true
+	controller._debounce_remaining = SymbolUsageController.CARET_DEBOUNCE_SECONDS
+	controller._queued_request = {
+		"request_kind": "references",
+		"uri": "file:///project/player.gd",
+		"symbol": "health",
+	}
+
+	controller._try_send_references_request()
+
+	assert_dict(controller._queued_request).is_not_empty()
 
 	controller.free()
 
