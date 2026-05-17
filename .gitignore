@@ -1,17 +1,24 @@
-# Godot local editor/cache data.
+# Godot 4+ specific ignores
 .godot/
 
-# GdUnit and other test runner artifacts.
+# Godot-specific ignores
+.import/
+export.cfg
+export_presets.cfg
+
+# Imported translations (automatically generated from CSV files)
+*.translation
+
+# Mono-specific ignores
+.mono/
+data_*/
+mono_crash.*.json
+
+# GdUnit and other test runner artifacts
 reports/
 coverage/
 
-# Runtime logs and crash dumps.
-*.log
-*.tmp
-*.temp
-crash_*.txt
-
-# OS/editor noise.
+# OS/editor noise
 .DS_Store
 Thumbs.db
 .idea/

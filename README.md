@@ -1,38 +1,85 @@
-# Smart Editor Plugin Test Project
+# Smart Editor
 
-This is a tiny Godot project for developing and testing the Smart Editor plugin outside of a real game project.
+Smart Editor is a Godot editor plugin that adds small IDE-style conveniences to the built-in script editor. It focuses on fast selection, local code navigation, and lightweight refactoring helpers for GDScript.
 
-The addon lives in:
+![Smart Editor demo](addons/smart-editor-plugin/media/demo.gif)
+
+## Features
+
+- Smart expand/shrink selection for GDScript expressions, statements, blocks, function bodies, comments, multiline calls, arrays, dictionaries, and function signatures.
+- Symbol Usage Stripe, a narrow mark strip beside the script editor scrollbar showing usages of the symbol under the caret in the current file.
+- Symbol usage highlights in the visible editor area for the symbol under the caret.
+- Function boundary guides that draw subtle horizontal lines between functions to make indentation-based code easier to scan.
+- Extract Local Variable for selected expressions.
+- Rename Symbol for the symbol under the caret.
+- Inline Variable for simple local variable declarations.
+
+## Default Shortcuts
+
+All shortcuts can be changed in `Editor Settings` under `Plugin` -> `Smart Editor`.
+
+- `Expand Selection`: `Meta+D` (`Command+D` on macOS)
+- `Shrink Selection`: `Meta+Shift+D` (`Command+Shift+D` on macOS)
+- `Extract Local Variable`: `Meta+Ctrl+V` (`Command+Control+V` on macOS)
+- `Rename Symbol`: `Meta+Ctrl+R` (`Command+Control+R` on macOS)
+- `Inline Variable`: `Meta+Ctrl+N` (`Command+Control+N` on macOS)
+
+The Symbol Usage Stripe, symbol highlights, and function boundary guides do not use shortcuts. They update automatically while editing and can be configured in Editor Settings.
+
+## Editor Settings
+
+Settings are available in `Editor Settings` under `Plugin` -> `Smart Editor`.
+
+- `Symbol Usage Stripe Enabled`: show or hide the right-side symbol usage stripe.
+- `Symbol Usage Highlight Color`: background color for symbol usages.
+- `Symbol Usage Current Highlight Color`: background color for the current usage.
+- `Symbol Usage Current Outline Color`: outline color for the current usage.
+- `Function Boundary Guides Enabled`: show or hide function boundary guides.
+- `Function Boundary Guide Color`: color for function boundary guide lines.
+- `Dialog Width`: width used by Smart Editor dialogs.
+- `Debug Logs`: print extra diagnostic messages to the output.
+
+## Installation
+
+From the Godot Asset Library, install the addon into your project and enable `Smart Editor` in `Project` -> `Project Settings` -> `Plugins`.
+
+For manual installation, copy this folder into your project:
 
 ```text
 addons/smart-editor-plugin/
 ```
 
-The lightweight parser test runner lives in:
+Then enable `Smart Editor` from the Plugins tab.
 
-```text
-tests/test_runner.tscn
-tests/test_runner.gd
-```
+## Compatibility
 
-Run the lightweight runner with:
+Smart Editor is developed and tested with Godot `4.6.1`. Other Godot `4.6.x` releases may work, but `4.6.1` is the supported version for the first Asset Library release.
+
+## Known Limitations
+
+Smart Editor does not try to be a full semantic refactoring engine. Its refactorings are intentionally lightweight and editor-focused.
+
+- `Rename Symbol` depends on Godot's code analysis service and is intended for safe current-file edits. It is not a project-wide function rename tool.
+- `Extract Local Variable` and `Inline Variable` operate on recognized GDScript text patterns. They do not perform complete semantic analysis.
+- Smart selection is based on a custom parser for practical editor selection ranges, not Godot's compiler AST. Some unusual syntax can still need more test cases.
+- Symbol usage stripe and highlights are focused on the currently open script, not a project-wide usage view.
+
+## Development
+
+This repository is also the development project for the plugin. It includes GdUnit tests and helper addons used while building Smart Editor. The Asset Library package is controlled by `.gitattributes` and only includes `addons/smart-editor-plugin/`, so development-only files stay in Git without being installed into user projects.
+
+Run the unit tests with:
 
 ```bash
-'/Applications/Godot.app/Contents/MacOS/Godot' --path /Users/evgenii/dev/games/smart-editor-plugin --headless res://tests/test_runner.tscn --quit
+'/Applications/Godot.app/Contents/MacOS/Godot' --path . -s -d res://addons/gdUnit4/bin/GdUnitCmdTool.gd --ignoreHeadlessMode -a res://test/unit
 ```
 
-The GdUnit parser tests live in:
-
-```text
-test/unit/gdscript_selection_parser_test.gd
-```
-
-Run the GdUnit suite with:
+To inspect the same addon-only archive shape that Asset Library users receive, run this after committing release changes:
 
 ```bash
-'/Applications/Godot.app/Contents/MacOS/Godot' --path /Users/evgenii/dev/games/smart-editor-plugin -s -d res://addons/gdUnit4/bin/GdUnitCmdTool.gd --ignoreHeadlessMode -a res://test/unit/gdscript_selection_parser_test.gd
+git archive --format=zip --output smart-editor-plugin.zip HEAD
 ```
 
-For now the tests focus on `gdscript_selection_parser.gd`, because expand selection is the part that benefits most from a clear fixture suite.
+## License
 
-Note: the installed GdUnit4 `6.0.0` copy needed one local Godot 4.6.1 compatibility patch in `addons/gdUnit4/src/core/GdUnitFileAccess.gd`: `FileAccess.get_as_text(true)` was changed to `FileAccess.get_as_text()`.
+Smart Editor is available under the MIT license. See `LICENSE` for details.
