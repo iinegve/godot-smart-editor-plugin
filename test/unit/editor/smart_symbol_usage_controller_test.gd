@@ -269,6 +269,48 @@ func test_lsp_references_include_current_for_loop_variable_declaration() -> void
 	code.free()
 
 
+func test_lsp_references_ignore_string_occurrences() -> void:
+	var code := CodeEdit.new()
+	code.text = "\n".join([
+		"func tokenize_line(to_col: int) -> void:",
+		"\tcol = int(result.back()[\"to_col\"])",
+		"\tprint(to_col)",
+	])
+	code.set_caret_line(0)
+	code.set_caret_column(19)
+
+	var stripe := FakeSymbolUsageView.new()
+	var highlight := FakeSymbolUsageView.new()
+	var controller := SymbolUsageController.new()
+	controller._code = code
+	controller._uri = "file:///project/player.gd"
+	controller._stripe = stripe
+	controller._highlight = highlight
+
+	controller._apply_references([
+		_lsp_reference("file:///project/player.gd", 0, 19, 0, 25),
+		_lsp_reference("file:///project/player.gd", 1, 25, 1, 31),
+		_lsp_reference("file:///project/player.gd", 2, 7, 2, 13),
+	], {
+		"uri": "file:///project/player.gd",
+		"symbol": "to_col",
+		"line": 0,
+		"column": 19,
+		"end_line": 0,
+		"end_column": 25,
+		"code_version": code.get_version(),
+	})
+
+	assert_array(stripe.references).is_equal([
+		_ref(0, 19, 25),
+		_ref(2, 7, 13),
+	])
+	assert_array(highlight.references).is_equal(stripe.references)
+
+	controller.free()
+	code.free()
+
+
 func test_stripe_rect_aligns_to_visible_vertical_scrollbar() -> void:
 	assert_object(SymbolUsageController.stripe_rect_for_scrollbars(
 		Vector2(800, 600),

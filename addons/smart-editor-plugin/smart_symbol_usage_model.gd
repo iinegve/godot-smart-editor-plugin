@@ -113,41 +113,11 @@ const LANGUAGE_SYMBOLS := {
 
 
 static func symbol_range_in_line(line: String, line_index: int, caret_column: int) -> Dictionary:
-	if line.is_empty():
+	var symbol_range := _identifier_range_at_or_before_column(line, line_index, caret_column)
+	if symbol_range.is_empty() or _is_language_symbol(symbol_range["symbol"]):
 		return {}
 
-	var probe_col := clampi(caret_column, 0, line.length())
-	if probe_col == line.length() and probe_col > 0:
-		probe_col -= 1
-	elif probe_col < line.length() and not _is_identifier_char(line[probe_col]):
-		if probe_col == 0 or not _is_identifier_char(line[probe_col - 1]):
-			return {}
-		probe_col -= 1
-
-	if probe_col < 0 or probe_col >= line.length() or not _is_identifier_char(line[probe_col]):
-		return {}
-
-	var start := probe_col
-	while start > 0 and _is_identifier_char(line[start - 1]):
-		start -= 1
-
-	if not _is_identifier_start_char(line[start]):
-		return {}
-
-	var end := probe_col + 1
-	while end < line.length() and _is_identifier_char(line[end]):
-		end += 1
-
-	var symbol := line.substr(start, end - start)
-	if _is_language_symbol(symbol):
-		return {}
-
-	return {
-		"symbol": symbol,
-		"line": line_index,
-		"column": start,
-		"end_column": end,
-	}
+	return symbol_range
 
 
 static func is_member_call_symbol(line: String, symbol_column: int, end_column: int) -> bool:
@@ -175,6 +145,43 @@ static func references_for_uri(references: Variant, uri: String) -> Array[Dictio
 		_insert_sorted(result, normalized)
 
 	return result
+
+
+static func identifier_references_for_uri(references: Variant, uri: String, text: String, symbol: String) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for reference in references_for_uri(references, uri):
+		if is_identifier_reference_in_text(text, reference, symbol):
+			result.append(reference)
+
+	return result
+
+
+static func is_identifier_reference_in_text(text: String, reference: Dictionary, symbol: String) -> bool:
+	if symbol.is_empty() or _is_language_symbol(symbol):
+		return false
+	if int(reference.get("line", -1)) != int(reference.get("end_line", -2)):
+		return false
+
+	var line_index := int(reference.get("line", -1))
+	var column := int(reference.get("column", -1))
+	var end_column := int(reference.get("end_column", -1))
+	var lines := text.split("\n", true)
+	if line_index < 0 or line_index >= lines.size():
+		return false
+
+	var line := lines[line_index]
+	if column < 0 or end_column > line.length() or column >= end_column:
+		return false
+	if line.substr(column, end_column - column) != symbol:
+		return false
+
+	var symbol_range := _identifier_range_at_code_column(line, line_index, column)
+	return (
+		not symbol_range.is_empty()
+		and symbol_range["symbol"] == symbol
+		and int(symbol_range["column"]) == column
+		and int(symbol_range["end_column"]) == end_column
+	)
 
 
 static func references_for_symbol_in_text(text: String, symbol: String) -> Array[Dictionary]:
@@ -307,6 +314,70 @@ static func _append_symbol_references_in_line(
 		index += 1
 
 	return ""
+
+
+static func _identifier_range_at_or_before_column(line: String, line_index: int, caret_column: int) -> Dictionary:
+	if line.is_empty():
+		return {}
+
+	var probe_col := clampi(caret_column, 0, line.length())
+	if probe_col == line.length() and probe_col > 0:
+		probe_col -= 1
+	elif probe_col < line.length() and not _is_identifier_char(line[probe_col]):
+		if probe_col == 0 or not _is_identifier_char(line[probe_col - 1]):
+			return {}
+		probe_col -= 1
+
+	if probe_col < 0 or probe_col >= line.length() or not _is_identifier_char(line[probe_col]):
+		return {}
+
+	return _identifier_range_at_code_column(line, line_index, probe_col)
+
+
+static func _identifier_range_at_code_column(line: String, line_index: int, column: int) -> Dictionary:
+	var index := 0
+	while index < line.length():
+		var triple_quote := _triple_quote_at(line, index)
+		if not triple_quote.is_empty():
+			var close_triple_quote := line.find(triple_quote, index + triple_quote.length())
+			if close_triple_quote == -1:
+				return {}
+
+			var string_end := close_triple_quote + triple_quote.length()
+			if column >= index and column < string_end:
+				return {}
+
+			index = string_end
+			continue
+
+		var ch := line[index]
+		if ch == "#":
+			return {}
+		if ch == "\"" or ch == "'":
+			var string_end := _skip_quoted_string(line, index, ch)
+			if column >= index and column < string_end:
+				return {}
+
+			index = string_end
+			continue
+		if _is_identifier_start_char(ch):
+			var start := index
+			index += 1
+			while index < line.length() and _is_identifier_char(line[index]):
+				index += 1
+
+			if column >= start and column < index:
+				return {
+					"symbol": line.substr(start, index - start),
+					"line": line_index,
+					"column": start,
+					"end_column": index,
+				}
+			continue
+
+		index += 1
+
+	return {}
 
 
 static func _triple_quote_at(line: String, index: int) -> String:

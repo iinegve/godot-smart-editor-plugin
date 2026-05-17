@@ -55,6 +55,11 @@ func test_symbol_range_under_caret_returns_empty_for_language_keywords() -> void
 	assert_dict(SymbolUsageModel.symbol_range_in_line("@export var health := 10", 0, 3)).is_empty()
 
 
+func test_symbol_range_under_caret_returns_empty_inside_comments_and_strings() -> void:
+	assert_dict(SymbolUsageModel.symbol_range_in_line("var key := \"to_col\"", 0, 13)).is_empty()
+	assert_dict(SymbolUsageModel.symbol_range_in_line("# to_col in comment", 0, 4)).is_empty()
+
+
 func test_symbol_context_detects_member_call_symbols() -> void:
 	assert_bool(SymbolUsageModel.is_member_call_symbol("_references.clear()", 12, 17)).is_true()
 	assert_bool(SymbolUsageModel.is_member_call_symbol("clear()", 0, 5)).is_false()
@@ -87,6 +92,27 @@ func test_references_for_uri_filters_and_sorts_lsp_references() -> void:
 		{"line": 1, "column": 2, "end_line": 1, "end_column": 8},
 		{"line": 1, "column": 8, "end_line": 1, "end_column": 14},
 		{"line": 4, "column": 12, "end_line": 4, "end_column": 18},
+	])
+
+
+func test_identifier_references_for_uri_filters_strings_comments_and_sorts() -> void:
+	var uri := "file:///project/player.gd"
+	var code := "\n".join([
+		"var to_col := 10",
+		"col = int(result.back()[\"to_col\"])",
+		"# to_col in comment",
+		"print(to_col)",
+	])
+	var references := [
+		_lsp_reference(uri, 1, 25, 1, 31),
+		_lsp_reference(uri, 3, 6, 3, 12),
+		_lsp_reference(uri, 2, 2, 2, 8),
+		_lsp_reference(uri, 0, 4, 0, 10),
+	]
+
+	assert_array(SymbolUsageModel.identifier_references_for_uri(references, uri, code, "to_col")).is_equal([
+		_ref(0, 4, 10),
+		_ref(3, 6, 12),
 	])
 
 

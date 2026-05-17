@@ -466,7 +466,12 @@ func _apply_references(references: Variant, request: Dictionary) -> void:
 		"end_line": int(request["end_line"]),
 		"end_column": int(request["end_column"]),
 	}
-	var filtered_references := SymbolUsageModel.references_for_uri(references, request["uri"])
+	var filtered_references := SymbolUsageModel.identifier_references_for_uri(
+		references,
+		request["uri"],
+		_get_code_text(_code),
+		str(request.get("symbol", ""))
+	)
 	if filtered_references.is_empty():
 		_debug("references response had no usages in current file; using token fallback.")
 		_apply_fallback_references(request)

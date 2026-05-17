@@ -8,6 +8,7 @@ const SmartFunctionBoundaryGuides := preload("res://addons/smart-editor-plugin/s
 const SmartFunctionBoundaryGuidesController := preload("res://addons/smart-editor-plugin/smart_function_boundary_guides_controller.gd")
 const SmartSymbolUsageHighlight := preload("res://addons/smart-editor-plugin/smart_symbol_usage_highlight.gd")
 const SmartSymbolUsageController := preload("res://addons/smart-editor-plugin/smart_symbol_usage_controller.gd")
+const SymbolUsageModel := preload("res://addons/smart-editor-plugin/smart_symbol_usage_model.gd")
 const SETTINGS_PREFIX := &"plugin/smart_editor/"
 const SETTING_DIALOG_WIDTH := SETTINGS_PREFIX + &"dialog_width"
 const SETTING_DEBUG_LOGS := SETTINGS_PREFIX + &"debug_logs"
@@ -725,7 +726,7 @@ func _rename_apply_workspace_edit(workspace_edit: Variant) -> void:
 func _rename_apply_text_edits(edits: Array) -> void:
 	var safe_edits := _rename_filter_unsafe_text_edits(edits)
 	if safe_edits.size() != edits.size():
-		_debug_rename("skipped %d unsafe member-access edit(s)." % (edits.size() - safe_edits.size()))
+		_debug_rename("skipped %d unsafe rename edit(s)." % (edits.size() - safe_edits.size()))
 
 	edits = safe_edits
 	edits.sort_custom(_compare_text_edits_desc)
@@ -755,10 +756,8 @@ func _rename_apply_text_edits(edits: Array) -> void:
 
 
 func _rename_filter_unsafe_text_edits(edits: Array) -> Array:
-	if _rename_symbol_is_member_access:
-		return edits
-
 	var safe_edits := []
+	var code_text := _get_code_text(_rename_code)
 	for edit in edits:
 		if typeof(edit) != TYPE_DICTIONARY or not edit.has("range"):
 			continue
@@ -767,12 +766,41 @@ func _rename_filter_unsafe_text_edits(edits: Array) -> Array:
 		var start: Dictionary = edit_range["start"]
 		var line := int(start["line"])
 		var column := int(start["character"])
-		if _is_member_access_at(_rename_code, line, column):
+		if not _rename_text_edit_matches_symbol(edit, code_text):
+			continue
+		if not _rename_symbol_is_member_access and _is_member_access_at(_rename_code, line, column):
 			continue
 
 		safe_edits.append(edit)
 
 	return safe_edits
+
+
+func _rename_text_edit_matches_symbol(edit: Dictionary, code_text: String) -> bool:
+	if not edit.has("range") or typeof(edit["range"]) != TYPE_DICTIONARY:
+		return false
+
+	var edit_range: Dictionary = edit["range"]
+	if (
+		not edit_range.has("start")
+		or not edit_range.has("end")
+		or typeof(edit_range["start"]) != TYPE_DICTIONARY
+		or typeof(edit_range["end"]) != TYPE_DICTIONARY
+	):
+		return false
+
+	var start: Dictionary = edit_range["start"]
+	var end: Dictionary = edit_range["end"]
+	return SymbolUsageModel.is_identifier_reference_in_text(
+		code_text,
+		{
+			"line": int(start.get("line", -1)),
+			"column": int(start.get("character", -1)),
+			"end_line": int(end.get("line", -1)),
+			"end_column": int(end.get("character", -1)),
+		},
+		_rename_symbol
+	)
 
 
 func _compare_text_edits_desc(a: Dictionary, b: Dictionary) -> bool:
@@ -1277,42 +1305,46 @@ func _get_code_text(code: CodeEdit) -> String:
 
 
 func _get_symbol_range_under_caret(code: CodeEdit) -> Dictionary:
-	var line := code.get_line(code.get_caret_line())
-	if line.is_empty():
+	var symbol_range := SymbolUsageModel.symbol_range_in_line(
+		code.get_line(code.get_caret_line()),
+		code.get_caret_line(),
+		code.get_caret_column()
+	)
+	if symbol_range.is_empty():
 		return {}
-
-	var probe_col := clampi(code.get_caret_column(), 0, line.length())
-	if probe_col == line.length() and probe_col > 0:
-		probe_col -= 1
-	elif probe_col < line.length() and not _is_identifier_char(line[probe_col]) and probe_col > 0:
-		probe_col -= 1
-
-	if probe_col < 0 or probe_col >= line.length() or not _is_identifier_char(line[probe_col]):
-		return {}
-
-	var start := probe_col
-	while start > 0 and _is_identifier_char(line[start - 1]):
-		start -= 1
-
-	var end := probe_col + 1
-	while end < line.length() and _is_identifier_char(line[end]):
-		end += 1
 
 	return {
-		"symbol": line.substr(start, end - start),
-		"line": code.get_caret_line(),
-		"column": start,
+		"symbol": symbol_range["symbol"],
+		"line": symbol_range["line"],
+		"column": symbol_range["column"],
 	}
 
 
 func _get_selected_or_current_symbol_range(code: CodeEdit) -> Dictionary:
 	if code.has_selection():
 		var selected := code.get_selected_text()
-		if _is_valid_identifier(selected):
+		var from_line := code.get_selection_from_line()
+		var from_col := code.get_selection_from_column()
+		var to_line := code.get_selection_to_line()
+		var to_col := code.get_selection_to_column()
+		if (
+			_is_valid_identifier(selected)
+			and from_line == to_line
+			and SymbolUsageModel.is_identifier_reference_in_text(
+				_get_code_text(code),
+				{
+					"line": from_line,
+					"column": from_col,
+					"end_line": to_line,
+					"end_column": to_col,
+				},
+				selected
+			)
+		):
 			return {
 				"symbol": selected,
-				"line": code.get_selection_from_line(),
-				"column": code.get_selection_from_column(),
+				"line": from_line,
+				"column": from_col,
 			}
 
 	return _get_symbol_range_under_caret(code)
