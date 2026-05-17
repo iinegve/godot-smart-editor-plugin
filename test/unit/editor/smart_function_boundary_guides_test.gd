@@ -112,6 +112,34 @@ func test_guide_y_uses_end_of_function_line_without_following_blank_line() -> vo
 	assert_float(FunctionBoundaryGuides.guide_y_for_gap_rects(end_line_rect, Rect2(), Rect2(), false)).is_equal(32.0)
 
 
+func test_leading_function_guide_y_uses_middle_of_blank_gap() -> void:
+	var previous_line_rect := Rect2(0, 20, 100, 12)
+	var first_blank_line_rect := Rect2(0, 32, 100, 12)
+	var last_blank_line_rect := Rect2(0, 44, 100, 12)
+	var header_line_rect := Rect2(0, 56, 100, 12)
+
+	assert_float(FunctionBoundaryGuides.leading_function_guide_y(
+		previous_line_rect,
+		first_blank_line_rect,
+		last_blank_line_rect,
+		header_line_rect,
+		true
+	)).is_equal(44.0)
+
+
+func test_leading_function_guide_y_uses_middle_between_adjacent_lines() -> void:
+	var previous_line_rect := Rect2(0, 20, 100, 12)
+	var header_line_rect := Rect2(0, 32, 100, 12)
+
+	assert_float(FunctionBoundaryGuides.leading_function_guide_y(
+		previous_line_rect,
+		Rect2(),
+		Rect2(),
+		header_line_rect,
+		false
+	)).is_equal(32.0)
+
+
 func test_guide_start_x_uses_gutter_and_left_margin() -> void:
 	assert_float(FunctionBoundaryGuides.guide_start_x_for_gutter(42.0, 6.0)).is_equal(48.0)
 

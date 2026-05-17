@@ -155,6 +155,8 @@ func _draw() -> void:
 
 	var guide_color := _guide_color()
 	var visible_lines := _visible_line_range()
+	_draw_leading_function_guide(guide_color, visible_lines)
+
 	for boundary in _boundaries:
 		var header_line := int(boundary.get("header_line", -1))
 		var end_line := int(boundary.get("end_line", -1))
@@ -171,6 +173,26 @@ func _draw() -> void:
 			continue
 
 		draw_line(Vector2(start_x, y), Vector2(size.x, y), guide_color, GUIDE_WIDTH)
+
+
+func _draw_leading_function_guide(guide_color: Color, visible_lines: Vector2i) -> void:
+	if _boundaries.is_empty():
+		return
+
+	var header_line := int(_boundaries[0].get("header_line", -1))
+	var guide_line := _leading_function_guide_line(header_line)
+	if guide_line < visible_lines.x or guide_line > visible_lines.y:
+		return
+
+	var y := _leading_function_guide_y(header_line)
+	if y < 0.0 or y > size.y:
+		return
+
+	var start_x := _guide_start_x()
+	if start_x >= size.x:
+		return
+
+	draw_line(Vector2(start_x, y), Vector2(size.x, y), guide_color, GUIDE_WIDTH)
 
 
 func _rebuild_boundaries() -> void:
@@ -190,6 +212,20 @@ static func guide_y_for_gap_rects(
 		return (gap_start + gap_end) * 0.5
 
 	return end_line_rect.position.y + end_line_rect.size.y
+
+
+static func leading_function_guide_y(
+	previous_line_rect: Rect2,
+	first_blank_line_rect: Rect2,
+	last_blank_line_rect: Rect2,
+	header_line_rect: Rect2,
+	has_blank_gap: bool
+) -> float:
+	if has_blank_gap:
+		return guide_y_for_gap_rects(previous_line_rect, first_blank_line_rect, last_blank_line_rect, true)
+
+	var previous_bottom := previous_line_rect.position.y + previous_line_rect.size.y
+	return (previous_bottom + header_line_rect.position.y) * 0.5
 
 
 static func guide_start_x_for_gutter(total_gutter_width: float, left_margin: float) -> float:
@@ -250,6 +286,49 @@ func _boundary_guide_y(header_line: int, end_line: int) -> float:
 		return _folded_function_guide_y(header_line, end_line)
 
 	return _guide_y(end_line)
+
+
+func _leading_function_guide_line(header_line: int) -> int:
+	var previous_line := _previous_non_empty_line_before(header_line)
+	if previous_line == -1:
+		return -1
+	if previous_line + 1 < header_line:
+		return int(floor((previous_line + 1 + header_line - 1) * 0.5))
+
+	return header_line
+
+
+func _leading_function_guide_y(header_line: int) -> float:
+	if _code == null or not is_instance_valid(_code):
+		return -1.0
+	if header_line < 0 or header_line >= _code.get_line_count():
+		return -1.0
+
+	var previous_line := _previous_non_empty_line_before(header_line)
+	if previous_line == -1:
+		return -1.0
+
+	var previous_line_rect := _line_overlay_rect(previous_line)
+	var header_line_rect := _line_overlay_rect(header_line)
+	if previous_line_rect.position.y < 0.0 or header_line_rect.position.y < 0.0:
+		return -1.0
+
+	var has_blank_gap := previous_line + 1 < header_line
+	var first_blank_line_rect := Rect2()
+	var last_blank_line_rect := Rect2()
+	if has_blank_gap:
+		first_blank_line_rect = _line_overlay_rect(previous_line + 1)
+		last_blank_line_rect = _line_overlay_rect(header_line - 1)
+		if first_blank_line_rect.position.y < 0.0 or last_blank_line_rect.position.y < 0.0:
+			has_blank_gap = false
+
+	return leading_function_guide_y(
+		previous_line_rect,
+		first_blank_line_rect,
+		last_blank_line_rect,
+		header_line_rect,
+		has_blank_gap
+	)
 
 
 func _folded_function_guide_y(header_line: int, end_line: int) -> float:
@@ -417,6 +496,19 @@ func _blank_gap_after(line: int) -> Vector2i:
 		search_line += 1
 
 	return Vector2i(first_blank_line, last_blank_line)
+
+
+func _previous_non_empty_line_before(line: int) -> int:
+	if _code == null or not is_instance_valid(_code):
+		return -1
+
+	var search_line := mini(line - 1, _code.get_line_count() - 1)
+	while search_line >= 0:
+		if not _code.get_line(search_line).strip_edges().is_empty():
+			return search_line
+		search_line -= 1
+
+	return -1
 
 
 func _code_rect_to_overlay_rect(code_rect: Rect2) -> Rect2:
