@@ -6,3 +6,4 @@
 /addons                     !export-ignore
 /addons/smart-editor-plugin !export-ignore
 /addons/smart-editor-plugin/** !export-ignore
+/addons/smart-editor-plugin/media/demo.gif export-ignore
