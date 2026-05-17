@@ -535,6 +535,7 @@ func _on_code_text_changed() -> void:
 	_current_symbol_key = ""
 	_queued_request.clear()
 	_clear_references()
+	_overlays_dirty = true
 	_schedule_text_refresh()
 
 
@@ -579,19 +580,37 @@ func _layout_stripe() -> void:
 	if _code == null or _stripe == null or not is_instance_valid(_code) or not is_instance_valid(_stripe):
 		return
 
-	var scrollbar_width := 0.0
-	var scrollbar := _code.get_v_scroll_bar()
-	if scrollbar != null and scrollbar.visible:
-		scrollbar_width = scrollbar.size.x
+	var vertical_scrollbar := _code.get_v_scroll_bar()
+	var vertical_scrollbar_rect := Rect2()
+	var has_visible_vertical_scrollbar := false
+	if vertical_scrollbar != null:
+		vertical_scrollbar_rect = Rect2(vertical_scrollbar.position, vertical_scrollbar.size)
+		has_visible_vertical_scrollbar = vertical_scrollbar.visible
 
-	_stripe.anchor_left = 1.0
-	_stripe.anchor_right = 1.0
+	var horizontal_scrollbar := _code.get_h_scroll_bar()
+	var horizontal_scrollbar_rect := Rect2()
+	var has_visible_horizontal_scrollbar := false
+	if horizontal_scrollbar != null:
+		horizontal_scrollbar_rect = Rect2(horizontal_scrollbar.position, horizontal_scrollbar.size)
+		has_visible_horizontal_scrollbar = horizontal_scrollbar.visible
+
+	var stripe_rect := stripe_rect_for_scrollbars(
+		_code.size,
+		vertical_scrollbar_rect,
+		has_visible_vertical_scrollbar,
+		horizontal_scrollbar_rect,
+		has_visible_horizontal_scrollbar,
+		STRIPE_WIDTH
+	)
+
+	_stripe.anchor_left = 0.0
+	_stripe.anchor_right = 0.0
 	_stripe.anchor_top = 0.0
-	_stripe.anchor_bottom = 1.0
-	_stripe.offset_left = -scrollbar_width - STRIPE_WIDTH
-	_stripe.offset_right = -scrollbar_width
-	_stripe.offset_top = 0.0
-	_stripe.offset_bottom = 0.0
+	_stripe.anchor_bottom = 0.0
+	_stripe.offset_left = stripe_rect.position.x
+	_stripe.offset_right = stripe_rect.position.x + stripe_rect.size.x
+	_stripe.offset_top = stripe_rect.position.y
+	_stripe.offset_bottom = stripe_rect.position.y + stripe_rect.size.y
 	_stripe.z_index = 20
 
 
@@ -664,6 +683,34 @@ func _has_pending_initialize_request() -> bool:
 
 static func _is_initialize_request(request: Variant) -> bool:
 	return typeof(request) == TYPE_STRING and request == "initialize"
+
+
+static func stripe_rect_for_scrollbars(
+	code_size: Vector2,
+	vertical_scrollbar_rect: Rect2,
+	vertical_scrollbar_visible: bool,
+	horizontal_scrollbar_rect: Rect2,
+	horizontal_scrollbar_visible: bool,
+	stripe_width: float
+) -> Rect2:
+	var top := 0.0
+	var height := code_size.y
+	var right := code_size.x
+
+	if vertical_scrollbar_visible:
+		top = vertical_scrollbar_rect.position.y
+		height = vertical_scrollbar_rect.size.y
+		right = vertical_scrollbar_rect.position.x
+	elif horizontal_scrollbar_visible:
+		height = minf(height, horizontal_scrollbar_rect.position.y)
+
+	var width := minf(stripe_width, maxf(0.0, right))
+	return Rect2(
+		maxf(0.0, right - width),
+		maxf(0.0, top),
+		width,
+		maxf(0.0, height)
+	)
 
 
 func _next_request_id() -> int:

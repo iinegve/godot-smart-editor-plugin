@@ -234,6 +234,28 @@ func test_lsp_references_include_current_for_loop_variable_declaration() -> void
 	code.free()
 
 
+func test_stripe_rect_aligns_to_visible_vertical_scrollbar() -> void:
+	assert_object(SymbolUsageController.stripe_rect_for_scrollbars(
+		Vector2(800, 600),
+		Rect2(784, 0, 16, 572),
+		true,
+		Rect2(0, 572, 784, 28),
+		true,
+		8.0
+	)).is_equal(Rect2(776, 0, 8, 572))
+
+
+func test_stripe_rect_without_vertical_scrollbar_excludes_horizontal_scrollbar() -> void:
+	assert_object(SymbolUsageController.stripe_rect_for_scrollbars(
+		Vector2(800, 600),
+		Rect2(),
+		false,
+		Rect2(0, 572, 800, 28),
+		true,
+		8.0
+	)).is_equal(Rect2(792, 0, 8, 572))
+
+
 func _ref(line: int, column: int, end_column: int) -> Dictionary:
 	return {
 		"line": line,
