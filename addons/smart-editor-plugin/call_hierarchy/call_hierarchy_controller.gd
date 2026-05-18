@@ -214,7 +214,7 @@ func _create_dock() -> void:
 	_panel.add_child(_tree)
 
 	if _plugin != null:
-		_plugin.add_control_to_dock(EditorPlugin.DOCK_SLOT_RIGHT_BL, _panel)
+		_plugin.add_control_to_dock(EditorPlugin.DOCK_SLOT_RIGHT_UL, _panel)
 	call_deferred("_apply_dock_tab_icon")
 
 
