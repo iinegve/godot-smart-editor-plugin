@@ -5,14 +5,17 @@ const SymbolUsageModel := preload("res://addons/smart-editor-plugin/smart_symbol
 const SymbolUsageHighlight := preload("res://addons/smart-editor-plugin/smart_symbol_usage_highlight.gd")
 const SymbolUsageStripe := preload("res://addons/smart-editor-plugin/smart_symbol_usage_stripe.gd")
 const STRIPE_WIDTH := 8.0
-const CARET_DEBOUNCE_SECONDS := 0.05
+const CARET_DEBOUNCE_SECONDS := 0.04
+const NAVIGATION_SETTLE_SECONDS := 0.08
 const TEXT_DEBOUNCE_SECONDS := 0.40
 
 var _enabled_setting: StringName = &""
 var _debug_setting: StringName = &""
+var _highlight_enabled_setting: StringName = &""
 var _highlight_color_setting: StringName = &""
 var _current_highlight_color_setting: StringName = &""
 var _current_outline_color_setting: StringName = &""
+var _lsp_enabled_setting: StringName = &""
 var _host := "127.0.0.1"
 var _port := 6005
 var _script_editor = null
@@ -27,6 +30,9 @@ var _text_change_pending := false
 var _current_symbol_key := ""
 var _request_generation := 0
 var _overlays_dirty := false
+var _last_references: Array[Dictionary] = []
+var _last_line_count := 0
+var _last_current_reference := {}
 
 var _tcp := StreamPeerTCP.new()
 var _read_buffer := PackedByteArray()
@@ -37,6 +43,7 @@ var _initialized := false
 var _last_status := StreamPeerTCP.STATUS_NONE
 var _opened_documents := {}
 var _document_versions := {}
+var _synced_code_versions := {}
 
 
 func configure(
@@ -44,17 +51,21 @@ func configure(
 	debug_setting: StringName,
 	host: String,
 	port: int,
+	highlight_enabled_setting: StringName = &"",
 	highlight_color_setting: StringName = &"",
 	current_highlight_color_setting: StringName = &"",
-	current_outline_color_setting: StringName = &""
+	current_outline_color_setting: StringName = &"",
+	lsp_enabled_setting: StringName = &""
 ) -> void:
 	_enabled_setting = enabled_setting
 	_debug_setting = debug_setting
 	_host = host
 	_port = port
+	_highlight_enabled_setting = highlight_enabled_setting
 	_highlight_color_setting = highlight_color_setting
 	_current_highlight_color_setting = current_highlight_color_setting
 	_current_outline_color_setting = current_outline_color_setting
+	_lsp_enabled_setting = lsp_enabled_setting
 	set_process(true)
 	_connect_script_editor()
 	_attach_to_current_code_edit()
@@ -68,7 +79,7 @@ func _exit_tree() -> void:
 
 
 func _process(delta: float) -> void:
-	if _enabled_setting == &"":
+	if _enabled_setting == &"" and _highlight_enabled_setting == &"":
 		return
 
 	if not _is_enabled():
@@ -76,12 +87,28 @@ func _process(delta: float) -> void:
 		return
 
 	_connect_script_editor()
+
 	_attach_to_current_code_edit()
+
+	_sync_stripe_overlay()
+
+	_sync_highlight_overlay()
+
 	if _overlays_dirty:
 		_layout_overlays()
-	_process_connection()
+
+	var delay_for_navigation := _refresh_pending and _should_delay_caret_refresh_for_navigation()
+	if not _lsp_enabled():
+		if _tcp.get_status() != StreamPeerTCP.STATUS_NONE:
+			_reset_connection()
+	elif not delay_for_navigation:
+		_process_connection()
 
 	if _refresh_pending:
+		if delay_for_navigation:
+			_debounce_remaining = maxf(_debounce_remaining, NAVIGATION_SETTLE_SECONDS)
+			return
+
 		_debounce_remaining -= delta
 		if _debounce_remaining <= 0.0:
 			_refresh_pending = false
@@ -129,20 +156,8 @@ func _attach_to_current_code_edit() -> void:
 	_code.text_changed.connect(_on_code_text_changed)
 	_code.resized.connect(_on_code_resized)
 
-	_highlight = SymbolUsageHighlight.new()
-	_highlight.name = "SmartSymbolUsageHighlight"
-	_highlight.configure(
-		_highlight_color_setting,
-		_current_highlight_color_setting,
-		_current_outline_color_setting
-	)
-	_code.add_child(_highlight)
-	_highlight.attach_to_code(_code)
-
-	_stripe = SymbolUsageStripe.new()
-	_stripe.name = "SmartSymbolUsageStripe"
-	_stripe.usage_clicked.connect(_on_stripe_usage_clicked)
-	_code.add_child(_stripe)
+	_sync_stripe_overlay()
+	_sync_highlight_overlay()
 	_layout_overlays()
 	_schedule_caret_refresh()
 
@@ -170,6 +185,9 @@ func _detach_code_edit() -> void:
 	_refresh_pending = false
 	_text_change_pending = false
 	_queued_request.clear()
+	_last_references.clear()
+	_last_line_count = 0
+	_last_current_reference.clear()
 	_overlays_dirty = false
 
 
@@ -178,6 +196,62 @@ func _disable_feature() -> void:
 		_detach_code_edit()
 	if _tcp.get_status() != StreamPeerTCP.STATUS_NONE:
 		_reset_connection()
+
+
+func _sync_stripe_overlay() -> void:
+	if _code == null or not is_instance_valid(_code):
+		return
+
+	if not _is_stripe_enabled():
+		if _stripe != null and is_instance_valid(_stripe):
+			_stripe.queue_free()
+		_stripe = null
+		return
+
+	if _stripe != null and is_instance_valid(_stripe):
+		return
+
+	_stripe = SymbolUsageStripe.new()
+	_stripe.name = "SmartSymbolUsageStripe"
+	_stripe.usage_clicked.connect(_on_stripe_usage_clicked)
+	_code.add_child(_stripe)
+	_overlays_dirty = true
+
+
+func _sync_highlight_overlay() -> void:
+	if _code == null or not is_instance_valid(_code):
+		return
+
+	if not _is_highlight_enabled():
+		if _highlight != null and is_instance_valid(_highlight):
+			_highlight.queue_free()
+		_highlight = null
+		return
+
+	if _highlight != null and is_instance_valid(_highlight):
+		return
+
+	_highlight = SymbolUsageHighlight.new()
+	_highlight.name = "SmartSymbolUsageHighlight"
+	_highlight.configure(
+		_highlight_color_setting,
+		_current_highlight_color_setting,
+		_current_outline_color_setting
+	)
+	_code.add_child(_highlight)
+	_highlight.attach_to_code(_code)
+	_overlays_dirty = true
+
+
+func _is_highlight_enabled() -> bool:
+	if _highlight_enabled_setting == &"":
+		return false
+
+	var settings = _get_editor_settings()
+	if settings == null or not settings.has_setting(_highlight_enabled_setting):
+		return false
+
+	return bool(settings.get_setting(_highlight_enabled_setting))
 
 
 func _schedule_caret_refresh() -> void:
@@ -194,16 +268,49 @@ func _schedule_text_refresh() -> void:
 	_debounce_remaining = TEXT_DEBOUNCE_SECONDS
 
 
+func _should_delay_caret_refresh_for_navigation() -> bool:
+	if _text_change_pending:
+		return false
+	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		return true
+
+	return (
+		Input.is_key_pressed(KEY_UP)
+		or Input.is_key_pressed(KEY_DOWN)
+		or Input.is_key_pressed(KEY_LEFT)
+		or Input.is_key_pressed(KEY_RIGHT)
+		or Input.is_key_pressed(KEY_PAGEUP)
+		or Input.is_key_pressed(KEY_PAGEDOWN)
+		or Input.is_key_pressed(KEY_HOME)
+		or Input.is_key_pressed(KEY_END)
+	)
+
+
+static func _is_navigation_key(keycode: Key) -> bool:
+	return [
+		KEY_UP,
+		KEY_DOWN,
+		KEY_LEFT,
+		KEY_RIGHT,
+		KEY_PAGEUP,
+		KEY_PAGEDOWN,
+		KEY_HOME,
+		KEY_END,
+	].has(keycode)
+
+
 func _refresh_references() -> void:
 	if _code == null or not is_instance_valid(_code) or _uri.is_empty():
 		_clear_references()
 		return
 
+	var caret_line_index := _code.get_caret_line()
+	var caret_column := _code.get_caret_column()
 	var caret_line := _code.get_line(_code.get_caret_line())
 	var symbol_range := SymbolUsageModel.symbol_range_in_line(
 		caret_line,
-		_code.get_caret_line(),
-		_code.get_caret_column()
+		caret_line_index,
+		caret_column
 	)
 	if symbol_range.is_empty():
 		_current_symbol_key = ""
@@ -224,7 +331,6 @@ func _refresh_references() -> void:
 
 	_request_generation += 1
 	_current_symbol_key = symbol_key
-	_clear_references()
 	_queued_request = {
 		"request_kind": "references",
 		"uri": _uri,
@@ -241,6 +347,12 @@ func _refresh_references() -> void:
 			int(symbol_range["end_column"])
 		),
 	}
+
+	_apply_fallback_references(_queued_request)
+
+	if not _lsp_enabled():
+		_queued_request.clear()
+		return
 
 	if not _ensure_connection():
 		_debug("could not connect to the code analysis service.")
@@ -364,11 +476,14 @@ func _try_send_references_request() -> void:
 
 func _send_document_sync_notification(request: Dictionary) -> void:
 	var uri: String = request["uri"]
+	var code_version := int(request.get("code_version", -1))
 	var version := int(_document_versions.get(uri, 0)) + 1
-	_document_versions[uri] = version
 
 	if not _opened_documents.has(uri):
 		_opened_documents[uri] = true
+		_document_versions[uri] = version
+		_synced_code_versions[uri] = code_version
+		var did_open_text := _get_code_text(_code)
 		_send_message({
 			"jsonrpc": "2.0",
 			"method": "textDocument/didOpen",
@@ -377,12 +492,18 @@ func _send_document_sync_notification(request: Dictionary) -> void:
 					"uri": uri,
 					"languageId": "gdscript",
 					"version": version,
-					"text": _get_code_text(_code),
+					"text": did_open_text,
 				},
 			},
 		})
 		return
 
+	if int(_synced_code_versions.get(uri, -2)) == code_version:
+		return
+
+	_document_versions[uri] = version
+	_synced_code_versions[uri] = code_version
+	var did_change_text := _get_code_text(_code)
 	_send_message({
 		"jsonrpc": "2.0",
 		"method": "textDocument/didChange",
@@ -392,7 +513,7 @@ func _send_document_sync_notification(request: Dictionary) -> void:
 				"version": version,
 			},
 			"contentChanges": [{
-				"text": _get_code_text(_code),
+				"text": did_change_text,
 			}],
 		},
 	})
@@ -466,10 +587,11 @@ func _apply_references(references: Variant, request: Dictionary) -> void:
 		"end_line": int(request["end_line"]),
 		"end_column": int(request["end_column"]),
 	}
+	var code_text := _get_code_text(_code)
 	var filtered_references := SymbolUsageModel.identifier_references_for_uri(
 		references,
 		request["uri"],
-		_get_code_text(_code),
+		code_text,
 		str(request.get("symbol", ""))
 	)
 	if filtered_references.is_empty():
@@ -490,8 +612,9 @@ func _apply_fallback_references(request: Dictionary) -> void:
 		_clear_references()
 		return
 
+	var code_text := _get_code_text(_code)
 	var fallback_references := SymbolUsageModel.references_for_symbol_in_text(
-		_get_code_text(_code),
+		code_text,
 		str(request.get("symbol", ""))
 	)
 	if fallback_references.is_empty():
@@ -622,6 +745,13 @@ func _layout_stripe() -> void:
 
 
 func _set_usage_references(references: Array[Dictionary], line_count: int, current_reference: Dictionary) -> void:
+	if _same_usage_references(references, line_count, current_reference):
+		return
+
+	_last_references = references.duplicate(true)
+	_last_line_count = line_count
+	_last_current_reference = current_reference.duplicate()
+
 	if _stripe != null and is_instance_valid(_stripe):
 		_stripe.set_usage_references(references, line_count, current_reference)
 	if _highlight != null and is_instance_valid(_highlight):
@@ -633,6 +763,24 @@ func _clear_references() -> void:
 		_stripe.clear_references()
 	if _highlight != null and is_instance_valid(_highlight):
 		_highlight.clear_references()
+	_last_references.clear()
+	_last_line_count = 0
+	_last_current_reference.clear()
+
+
+func _same_usage_references(references: Array[Dictionary], line_count: int, current_reference: Dictionary) -> bool:
+	if line_count != _last_line_count:
+		return false
+	if not SymbolUsageModel.same_position(current_reference, _last_current_reference):
+		return false
+	if references.size() != _last_references.size():
+		return false
+
+	for index in references.size():
+		if not SymbolUsageModel.same_position(references[index], _last_references[index]):
+			return false
+
+	return true
 
 
 func _references_including_current(references: Array[Dictionary], current_reference: Dictionary) -> Array[Dictionary]:
@@ -678,6 +826,7 @@ func _reset_connection() -> void:
 	_last_status = StreamPeerTCP.STATUS_NONE
 	_opened_documents.clear()
 	_document_versions.clear()
+	_synced_code_versions.clear()
 
 
 func _has_pending_initialize_request() -> bool:
@@ -835,12 +984,22 @@ func _normalize_response_id(id: Variant) -> int:
 
 
 func _is_enabled() -> bool:
+	return should_run_controller(_is_stripe_enabled(), _is_highlight_enabled())
+
+
+func _is_stripe_enabled() -> bool:
+	if _enabled_setting == &"":
+		return false
+
 	var settings = _get_editor_settings()
-	if settings == null:
-		return true
-	if not settings.has_setting(_enabled_setting):
-		return true
+	if settings == null or not settings.has_setting(_enabled_setting):
+		return false
+
 	return bool(settings.get_setting(_enabled_setting))
+
+
+static func should_run_controller(stripe_enabled: bool, highlight_enabled: bool) -> bool:
+	return stripe_enabled or highlight_enabled
 
 
 func _debug_logs_enabled() -> bool:
@@ -850,6 +1009,15 @@ func _debug_logs_enabled() -> bool:
 	if _debug_setting == &"" or not settings.has_setting(_debug_setting):
 		return false
 	return bool(settings.get_setting(_debug_setting))
+
+
+func _lsp_enabled() -> bool:
+	var settings = _get_editor_settings()
+	if settings == null:
+		return false
+	if _lsp_enabled_setting == &"" or not settings.has_setting(_lsp_enabled_setting):
+		return false
+	return bool(settings.get_setting(_lsp_enabled_setting))
 
 
 func _get_editor_settings():

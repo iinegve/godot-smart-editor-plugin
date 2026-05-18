@@ -6,13 +6,17 @@ const SmartSelectionHistory := preload("res://addons/smart-editor-plugin/smart_s
 const SmartSelectionRange := preload("res://addons/smart-editor-plugin/smart_selection_range.gd")
 const SmartFunctionBoundaryGuides := preload("res://addons/smart-editor-plugin/smart_function_boundary_guides.gd")
 const SmartFunctionBoundaryGuidesController := preload("res://addons/smart-editor-plugin/smart_function_boundary_guides_controller.gd")
+const SmartRenameWorkspaceEdit := preload("res://addons/smart-editor-plugin/smart_rename_workspace_edit.gd")
 const SmartSymbolUsageHighlight := preload("res://addons/smart-editor-plugin/smart_symbol_usage_highlight.gd")
 const SmartSymbolUsageController := preload("res://addons/smart-editor-plugin/smart_symbol_usage_controller.gd")
 const SymbolUsageModel := preload("res://addons/smart-editor-plugin/smart_symbol_usage_model.gd")
 const SETTINGS_PREFIX := &"plugin/smart_editor/"
 const SETTING_DIALOG_WIDTH := SETTINGS_PREFIX + &"dialog_width"
 const SETTING_DEBUG_LOGS := SETTINGS_PREFIX + &"debug_logs"
+const SETTING_RENAME_LSP_PROBE_ONLY := SETTINGS_PREFIX + &"rename_lsp_probe_only"
 const SETTING_SYMBOL_USAGE_STRIPE_ENABLED := SETTINGS_PREFIX + &"symbol_usage_stripe_enabled"
+const SETTING_SYMBOL_USAGE_HIGHLIGHT_ENABLED := SETTINGS_PREFIX + &"symbol_usage_highlight_enabled"
+const SETTING_SYMBOL_USAGE_LSP_ENABLED := SETTINGS_PREFIX + &"symbol_usage_lsp_enabled"
 const SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR := SETTINGS_PREFIX + &"symbol_usage_highlight_color"
 const SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR := SETTINGS_PREFIX + &"symbol_usage_current_highlight_color"
 const SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR := SETTINGS_PREFIX + &"symbol_usage_current_outline_color"
@@ -26,6 +30,7 @@ const SETTING_INLINE_SHORTCUT := SETTINGS_PREFIX + &"inline_variable"
 const HOST := "127.0.0.1"
 const PORT := 6005
 const IDENTIFIER_CHARS := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+const RENAME_PREWARM_RETRY_USEC := 1_000_000
 
 var _extract_dialog: ConfirmationDialog
 var _extract_name_edit: LineEdit
@@ -42,7 +47,6 @@ var _rename_script_path := ""
 var _rename_symbol := ""
 var _rename_symbol_line := 0
 var _rename_symbol_column := 0
-var _rename_symbol_is_member_access := false
 var _rename_tcp := StreamPeerTCP.new()
 var _rename_read_buffer := PackedByteArray()
 var _rename_next_id := 1
@@ -52,6 +56,9 @@ var _rename_queued := {}
 var _rename_last_status := StreamPeerTCP.STATUS_NONE
 var _rename_opened_documents := {}
 var _rename_document_versions := {}
+var _rename_document_text_signatures := {}
+var _rename_prewarm_pending := false
+var _rename_last_prewarm_attempt_usec := 0
 
 var _inline_code: CodeEdit
 var _inline_script_path := ""
@@ -80,6 +87,7 @@ func _enter_tree() -> void:
 	_create_rename_dialog()
 	_create_function_boundary_guides_controller()
 	_create_symbol_usage_controller()
+	_rename_prewarm_pending = true
 	set_process_shortcut_input(true)
 	set_process(true)
 
@@ -98,6 +106,7 @@ func _exit_tree() -> void:
 
 
 func _process(_delta: float) -> void:
+	_rename_prewarm_lsp_connection()
 	_rename_process_connection()
 	_inline_process_connection()
 
@@ -138,7 +147,10 @@ func _shortcut_input(event: InputEvent) -> void:
 func _init_settings() -> void:
 	_init_setting(SETTING_DIALOG_WIDTH, 420, TYPE_INT, PROPERTY_HINT_RANGE, "300,900,10")
 	_init_setting(SETTING_DEBUG_LOGS, false, TYPE_BOOL)
-	_init_setting(SETTING_SYMBOL_USAGE_STRIPE_ENABLED, true, TYPE_BOOL)
+	_init_setting(SETTING_RENAME_LSP_PROBE_ONLY, false, TYPE_BOOL)
+	_init_setting(SETTING_SYMBOL_USAGE_STRIPE_ENABLED, false, TYPE_BOOL)
+	_init_setting(SETTING_SYMBOL_USAGE_HIGHLIGHT_ENABLED, false, TYPE_BOOL)
+	_init_setting(SETTING_SYMBOL_USAGE_LSP_ENABLED, false, TYPE_BOOL)
 	_init_setting(SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR, SmartSymbolUsageHighlight.DEFAULT_HIGHLIGHT_COLOR, TYPE_COLOR)
 	_init_setting(SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR, SmartSymbolUsageHighlight.DEFAULT_CURRENT_HIGHLIGHT_COLOR, TYPE_COLOR)
 	_init_setting(SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR, SmartSymbolUsageHighlight.DEFAULT_CURRENT_OUTLINE_COLOR, TYPE_COLOR)
@@ -190,6 +202,14 @@ func _dialog_width() -> int:
 
 func _debug_logs_enabled() -> bool:
 	return bool(_get_plugin_setting(SETTING_DEBUG_LOGS, false))
+
+
+func _rename_lsp_probe_only_enabled() -> bool:
+	return bool(_get_plugin_setting(SETTING_RENAME_LSP_PROBE_ONLY, false))
+
+
+func _rename_probe_logs_enabled() -> bool:
+	return _debug_logs_enabled() or _rename_lsp_probe_only_enabled()
 
 
 func _shortcut_matches(path: StringName, event: InputEvent) -> bool:
@@ -262,9 +282,11 @@ func _create_symbol_usage_controller() -> void:
 		SETTING_DEBUG_LOGS,
 		HOST,
 		PORT,
+		SETTING_SYMBOL_USAGE_HIGHLIGHT_ENABLED,
 		SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR,
 		SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR,
-		SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR
+		SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR,
+		SETTING_SYMBOL_USAGE_LSP_ENABLED
 	)
 
 
@@ -458,7 +480,7 @@ func _begin_rename() -> void:
 	_rename_symbol = symbol_range["symbol"]
 	_rename_symbol_line = symbol_range["line"]
 	_rename_symbol_column = symbol_range["column"]
-	_rename_symbol_is_member_access = _is_member_access_at(_rename_code, _rename_symbol_line, _rename_symbol_column)
+	_debug_rename("begin for '%s' at %s:%d:%d." % [_rename_symbol, _rename_script_path, _rename_symbol_line + 1, _rename_symbol_column + 1])
 
 	_rename_prompt_label.text = "Rename '%s' to:" % _rename_symbol
 	_rename_name_edit.text = _rename_symbol
@@ -507,11 +529,32 @@ func _rename_process_connection() -> void:
 		if not _rename_initialized and not _rename_pending_requests.values().has("initialize"):
 			_rename_send_initialize_request()
 	elif status == StreamPeerTCP.STATUS_ERROR:
-		print("Rename Symbol: connection error.")
+		if not _rename_queued.is_empty():
+			print("Rename Symbol: connection error.")
 		_rename_reset_connection()
 
 
-func _rename_ensure_connection() -> bool:
+func _rename_prewarm_lsp_connection() -> void:
+	if not _rename_prewarm_pending:
+		return
+	if _rename_initialized:
+		_rename_prewarm_pending = false
+		return
+	if not _rename_queued.is_empty() or not _rename_pending_requests.is_empty():
+		return
+
+	var status := _rename_tcp.get_status()
+	if status == StreamPeerTCP.STATUS_CONNECTED or status == StreamPeerTCP.STATUS_CONNECTING:
+		return
+
+	var now := Time.get_ticks_usec()
+	if _rename_last_prewarm_attempt_usec > 0 and now - _rename_last_prewarm_attempt_usec < RENAME_PREWARM_RETRY_USEC:
+		return
+	_rename_last_prewarm_attempt_usec = now
+	_rename_ensure_connection(false)
+
+
+func _rename_ensure_connection(report_errors: bool = true) -> bool:
 	var status := _rename_tcp.get_status()
 	if status == StreamPeerTCP.STATUS_CONNECTED or status == StreamPeerTCP.STATUS_CONNECTING:
 		return true
@@ -519,7 +562,8 @@ func _rename_ensure_connection() -> bool:
 	_rename_reset_connection()
 	var err := _rename_tcp.connect_to_host(HOST, PORT)
 	if err != OK:
-		print("Rename Symbol: could not connect to the code analysis service, error %d." % err)
+		if report_errors:
+			print("Rename Symbol: could not connect to the code analysis service, error %d." % err)
 		return false
 
 	_debug_rename("connecting to code analysis service at %s:%d..." % [HOST, PORT])
@@ -547,7 +591,7 @@ func _rename_send_initialize_request() -> void:
 				"textDocument": {
 					"rename": {
 						"dynamicRegistration": false,
-						"prepareSupport": false,
+						"prepareSupport": true,
 					},
 				},
 			},
@@ -571,9 +615,35 @@ func _rename_send_initialized_notification() -> void:
 func _rename_try_send_request() -> void:
 	if _rename_queued.is_empty() or not _rename_initialized:
 		return
+	if _rename_pending_requests.values().has("prepare_rename") or _rename_pending_requests.values().has("rename"):
+		return
 
-	_rename_send_document_sync_notification()
+	_rename_send_open_document_sync_notifications()
+	_rename_send_prepare_rename_request()
 
+
+func _rename_send_prepare_rename_request() -> void:
+	var id := _rename_next_request_id()
+	_rename_pending_requests[id] = "prepare_rename"
+
+	_rename_send_message({
+		"jsonrpc": "2.0",
+		"id": id,
+		"method": "textDocument/prepareRename",
+		"params": {
+			"textDocument": {
+				"uri": _rename_queued["uri"],
+			},
+			"position": {
+				"line": _rename_queued["line"],
+				"character": _rename_queued["character"],
+			},
+		},
+	})
+	_debug_rename("sent prepareRename request for '%s' at %d:%d." % [_rename_symbol, _rename_queued["line"] + 1, _rename_queued["character"] + 1])
+
+
+func _rename_send_rename_request() -> void:
 	var id := _rename_next_request_id()
 	_rename_pending_requests[id] = "rename"
 
@@ -592,11 +662,36 @@ func _rename_try_send_request() -> void:
 			"newName": _rename_queued["new_name"],
 		},
 	})
-	_debug_rename("sent rename request for %s." % _rename_queued["uri"])
+	_debug_rename("sent rename request for '%s' -> '%s' in %s." % [_rename_symbol, _rename_queued["new_name"], _rename_queued["uri"]])
 
 
-func _rename_send_document_sync_notification() -> void:
-	var uri: String = _rename_queued["uri"]
+func _rename_send_open_document_sync_notifications() -> void:
+	var target_uri := str(_rename_queued.get("uri", ""))
+	var synced_target := false
+	var open_script_buffers := _rename_open_script_buffers_by_uri()
+
+	for uri in open_script_buffers:
+		var uri_text := str(uri)
+		var open_script_buffer: Dictionary = open_script_buffers[uri_text]
+		var code: CodeEdit = open_script_buffer.get("code", null)
+		if code == null:
+			continue
+
+		var text := _get_code_text(code)
+		_rename_send_text_document_sync_notification(uri_text, text)
+		if uri_text == target_uri:
+			synced_target = true
+
+	if not synced_target and not target_uri.is_empty() and _rename_code != null:
+		var target_text := _get_code_text(_rename_code)
+		_rename_send_text_document_sync_notification(target_uri, target_text)
+
+
+func _rename_send_text_document_sync_notification(uri: String, text: String) -> bool:
+	var signature := _rename_text_signature(text)
+	if _rename_opened_documents.has(uri) and str(_rename_document_text_signatures.get(uri, "")) == signature:
+		return false
+
 	var version := int(_rename_document_versions.get(uri, 0)) + 1
 	_rename_document_versions[uri] = version
 
@@ -611,11 +706,12 @@ func _rename_send_document_sync_notification() -> void:
 					"uri": uri,
 					"languageId": "gdscript",
 					"version": version,
-					"text": _get_code_text(_rename_code),
+					"text": text,
 				},
 			},
 		})
-		return
+		_rename_document_text_signatures[uri] = signature
+		return true
 
 	_debug_rename("sending didChange for %s." % uri)
 	_rename_send_message({
@@ -627,10 +723,12 @@ func _rename_send_document_sync_notification() -> void:
 				"version": version,
 			},
 			"contentChanges": [{
-				"text": _get_code_text(_rename_code),
+				"text": text,
 			}],
 		},
 	})
+	_rename_document_text_signatures[uri] = signature
+	return true
 
 
 func _rename_send_message(message: Dictionary) -> void:
@@ -682,133 +780,438 @@ func _rename_handle_message(message: Dictionary) -> void:
 	_rename_pending_requests.erase(id)
 
 	if message.has("error"):
+		if request_kind == "prepare_rename":
+			print("Rename Symbol: prepareRename failed: %s" % JSON.stringify(message["error"]))
+			_rename_send_rename_request()
+			return
+
 		print("Rename Symbol: request failed: %s" % JSON.stringify(message["error"]))
 		return
 
 	if request_kind == "initialize":
 		_rename_initialized = true
+		_rename_prewarm_pending = false
 		_debug_rename("initialized.")
 		_rename_send_initialized_notification()
 		_rename_try_send_request()
+	elif request_kind == "prepare_rename":
+		_rename_log_prepare_rename_result(message.get("result", null))
+		_rename_send_rename_request()
 	elif request_kind == "rename":
-		_rename_apply_workspace_edit(message.get("result", {}))
-		_rename_queued = {}
+		var workspace_edit = message.get("result", {})
+		_rename_log_workspace_edit(workspace_edit)
+		if _rename_lsp_probe_only_enabled():
+			print("Rename Symbol: LSP probe-only mode is enabled; returned edits were not applied.")
+		else:
+			call_deferred("_rename_apply_workspace_edit", workspace_edit, str(_rename_queued.get("new_name", "")))
+	_rename_queued = {}
 
 
-func _rename_apply_workspace_edit(workspace_edit: Variant) -> void:
+func _rename_apply_workspace_edit(workspace_edit: Variant, new_name: String = "") -> void:
 	if typeof(workspace_edit) != TYPE_DICTIONARY:
 		print("Rename Symbol: rename returned no changes.")
 		return
 
-	var edits_by_uri := {}
-	if workspace_edit.has("changes") and typeof(workspace_edit["changes"]) == TYPE_DICTIONARY:
-		edits_by_uri = workspace_edit["changes"]
-	elif workspace_edit.has("documentChanges") and typeof(workspace_edit["documentChanges"]) == TYPE_ARRAY:
-		for document_change in workspace_edit["documentChanges"]:
-			if typeof(document_change) != TYPE_DICTIONARY:
-				continue
-			if not document_change.has("textDocument") or not document_change.has("edits"):
-				continue
-			edits_by_uri[document_change["textDocument"]["uri"]] = document_change["edits"]
+	var edits_by_uri := _rename_workspace_edit_to_edits_by_uri(workspace_edit)
 
 	if edits_by_uri.is_empty():
 		print("Rename Symbol: no changes found.")
 		return
 
-	var current_uri := _path_to_file_uri(ProjectSettings.globalize_path(_rename_script_path))
-	if not edits_by_uri.has(current_uri):
-		print("Rename Symbol: changes outside the current file are not supported yet.")
+	var applied_edits := 0
+	var applied_files := 0
+	var disk_files_changed := false
+	var open_script_buffers := _rename_open_script_buffers_by_uri()
+	var open_applied_buffers: Array[Dictionary] = []
+	for uri in edits_by_uri:
+		var edits: Array = edits_by_uri[uri]
+		if edits.is_empty():
+			continue
+
+		var uri_text := str(uri)
+		if open_script_buffers.has(uri_text):
+			var open_script_buffer: Dictionary = open_script_buffers[uri_text]
+			SmartRenameWorkspaceEdit.apply_text_edits_to_code_edit(open_script_buffer["code"], edits)
+			var open_text := _get_code_text(open_script_buffer["code"])
+			_rename_set_script_source_code(open_script_buffer["script"], open_text)
+			var definition_score := _rename_definition_score_for_code(open_script_buffer["code"], edits, new_name)
+			open_applied_buffers.append({
+				"uri": uri_text,
+				"buffer": open_script_buffer,
+				"text": open_text,
+				"edits": edits.size(),
+				"definition_score": definition_score,
+			})
+			applied_edits += edits.size()
+			applied_files += 1
+			continue
+
+		var updated_text := _rename_apply_text_edits_to_file(uri_text, edits)
+		if not updated_text.is_empty():
+			_rename_sync_script_resource_for_uri(uri_text, updated_text)
+			disk_files_changed = true
+			applied_edits += edits.size()
+			applied_files += 1
+
+	if applied_edits == 0:
+		print("Rename Symbol: no changes were applied.")
 		return
 
-	_rename_apply_text_edits(edits_by_uri[current_uri])
+	open_applied_buffers.sort_custom(_compare_rename_open_apply_items)
+	for open_item in open_applied_buffers:
+		var open_script_buffer: Dictionary = open_item["buffer"]
+		var open_script: Script = open_script_buffer.get("script", null)
+		_rename_reload_script_resource(open_script)
+		_rename_refresh_script_editor_state(open_script)
+		_rename_send_text_document_sync_notification(str(open_item["uri"]), str(open_item["text"]))
+		if _rename_save_open_script_buffer(open_script_buffer):
+			disk_files_changed = true
+
+	if disk_files_changed:
+		_rename_scan_resource_filesystem_sources()
+
+	_debug_rename("applied %d edit(s) across %d file(s)." % [applied_edits, applied_files])
 
 
-func _rename_apply_text_edits(edits: Array) -> void:
-	var safe_edits := _rename_filter_unsafe_text_edits(edits)
-	if safe_edits.size() != edits.size():
-		_debug_rename("skipped %d unsafe rename edit(s)." % (edits.size() - safe_edits.size()))
+func _rename_open_script_buffers_by_uri() -> Dictionary:
+	var buffers_by_uri := {}
+	var script_editor := EditorInterface.get_script_editor()
+	var scripts: Array = script_editor.get_open_scripts()
+	var editors: Array = script_editor.get_open_script_editors()
+	var count = mini(scripts.size(), editors.size())
 
-	edits = safe_edits
-	edits.sort_custom(_compare_text_edits_desc)
-
-	_rename_code.begin_complex_operation()
-	for edit in edits:
-		if typeof(edit) != TYPE_DICTIONARY or not edit.has("range") or not edit.has("newText"):
+	for index in range(count):
+		var script: Script = scripts[index]
+		if script == null:
 			continue
 
-		var edit_range: Dictionary = edit["range"]
-		var start: Dictionary = edit_range["start"]
-		var end: Dictionary = edit_range["end"]
-		_replace_range_in_code(
-			_rename_code,
-			start["line"],
-			start["character"],
-			end["line"],
-			end["character"],
-			edit["newText"]
-		)
-	_rename_code.end_complex_operation()
-
-	var renamed_name: String = _rename_queued.get("new_name", "")
-	if not renamed_name.is_empty():
-		_rename_code.select(_rename_symbol_line, _rename_symbol_column, _rename_symbol_line, _rename_symbol_column + renamed_name.length())
-	_debug_rename("applied %d edit(s) to current file." % edits.size())
-
-
-func _rename_filter_unsafe_text_edits(edits: Array) -> Array:
-	var safe_edits := []
-	var code_text := _get_code_text(_rename_code)
-	for edit in edits:
-		if typeof(edit) != TYPE_DICTIONARY or not edit.has("range"):
+		var script_path := str(script.resource_path)
+		if script_path.is_empty() or script_path.contains("::"):
+			continue
+		if script_path.get_extension() != "gd":
 			continue
 
-		var edit_range: Dictionary = edit["range"]
-		var start: Dictionary = edit_range["start"]
-		var line := int(start["line"])
-		var column := int(start["character"])
-		if not _rename_text_edit_matches_symbol(edit, code_text):
-			continue
-		if not _rename_symbol_is_member_access and _is_member_access_at(_rename_code, line, column):
+		var editor = editors[index]
+		if editor == null:
 			continue
 
-		safe_edits.append(edit)
+		var base = editor.get_base_editor()
+		if not base is CodeEdit:
+			continue
 
-	return safe_edits
+		var uri := _path_to_file_uri(ProjectSettings.globalize_path(script_path))
+		buffers_by_uri[uri] = {
+			"script": script,
+			"code": base,
+		}
+
+	return buffers_by_uri
 
 
-func _rename_text_edit_matches_symbol(edit: Dictionary, code_text: String) -> bool:
-	if not edit.has("range") or typeof(edit["range"]) != TYPE_DICTIONARY:
+func _rename_workspace_edit_to_edits_by_uri(workspace_edit: Variant) -> Dictionary:
+	return SmartRenameWorkspaceEdit.workspace_edit_to_edits_by_uri(workspace_edit)
+
+
+func _rename_scan_resource_filesystem_sources() -> void:
+	var resource_filesystem := EditorInterface.get_resource_filesystem()
+	if resource_filesystem == null:
+		return
+
+	if resource_filesystem.has_method("scan_sources"):
+		resource_filesystem.scan_sources()
+	elif resource_filesystem.has_method("scan"):
+		resource_filesystem.scan()
+
+
+func _rename_refresh_script_editor_state(script: Script) -> void:
+	if script == null:
+		return
+
+	var script_editor := EditorInterface.get_script_editor()
+	if script_editor == null:
+		return
+
+	if script_editor.has_method("clear_docs_from_script"):
+		script_editor.call("clear_docs_from_script", script)
+	if script_editor.has_method("update_docs_from_script"):
+		script_editor.call("update_docs_from_script", script)
+	if script_editor.has_method("trigger_live_script_reload"):
+		script_editor.call("trigger_live_script_reload", script.resource_path)
+
+
+func _rename_set_script_source_code(script: Script, text: String) -> void:
+	if script == null:
+		return
+
+	script.set_source_code(text)
+
+
+func _rename_reload_script_resource(script: Script) -> void:
+	if script == null:
+		return
+
+	if script.has_method("reload"):
+		script.call("reload", true)
+	if script.has_method("update_exports"):
+		script.call("update_exports")
+
+
+func _rename_sync_script_resource_for_uri(uri: String, text: String) -> void:
+	var path := _file_uri_to_path(uri)
+	if path.get_extension() != "gd":
+		return
+
+	var script = load(ProjectSettings.localize_path(path))
+	if script is Script:
+		SmartRenameWorkspaceEdit.sync_script_from_text(script, text)
+		_rename_refresh_script_editor_state(script)
+		return
+
+
+func _rename_save_open_script_buffer(open_script_buffer: Dictionary) -> bool:
+	var script: Script = open_script_buffer.get("script", null)
+	var code: CodeEdit = open_script_buffer.get("code", null)
+	if script == null or code == null:
 		return false
 
-	var edit_range: Dictionary = edit["range"]
-	if (
-		not edit_range.has("start")
-		or not edit_range.has("end")
-		or typeof(edit_range["start"]) != TYPE_DICTIONARY
-		or typeof(edit_range["end"]) != TYPE_DICTIONARY
-	):
+	var script_path := str(script.resource_path)
+	if not SmartRenameWorkspaceEdit.save_code_edit_to_script_path(script, code):
+		print("Rename Symbol: could not save %s." % script_path)
 		return false
 
-	var start: Dictionary = edit_range["start"]
-	var end: Dictionary = edit_range["end"]
-	return SymbolUsageModel.is_identifier_reference_in_text(
-		code_text,
-		{
-			"line": int(start.get("line", -1)),
-			"column": int(start.get("character", -1)),
-			"end_line": int(end.get("line", -1)),
-			"end_column": int(end.get("character", -1)),
-		},
-		_rename_symbol
-	)
+	return true
+
+
+func _rename_log_prepare_rename_result(result: Variant) -> void:
+	if not _rename_probe_logs_enabled():
+		return
+
+	print("Rename Symbol: prepareRename result: %s" % _rename_debug_preview(result, 2000))
+
+
+func _rename_log_workspace_edit(workspace_edit: Variant) -> void:
+	if not _rename_probe_logs_enabled():
+		return
+
+	var edits_by_uri := _rename_workspace_edit_to_edits_by_uri(workspace_edit)
+	if edits_by_uri.is_empty():
+		print("Rename Symbol: LSP rename returned no edits: %s" % _rename_debug_preview(workspace_edit, 2000))
+		return
+
+	var edit_count := 0
+	for uri in edits_by_uri:
+		edit_count += edits_by_uri[uri].size()
+
+	print("Rename Symbol: LSP rename returned %d edit(s) across %d file(s)." % [edit_count, edits_by_uri.size()])
+	for uri in edits_by_uri:
+		var edits: Array = edits_by_uri[uri]
+		print("Rename Symbol:   %s (%d edit(s))" % [_rename_display_uri(uri), edits.size()])
+		for index in range(edits.size()):
+			print("Rename Symbol:     #%d %s" % [index + 1, _rename_format_text_edit_target(uri, edits[index])])
+
+
+func _rename_format_text_edit_target(uri: String, edit: Variant) -> String:
+	if typeof(edit) != TYPE_DICTIONARY or not edit.has("range"):
+		return _rename_debug_preview(edit, 300)
+
+	var edit_range: Variant = edit["range"]
+	if typeof(edit_range) != TYPE_DICTIONARY:
+		return _rename_debug_preview(edit, 300)
+
+	var start: Dictionary = edit_range.get("start", {})
+	var end: Dictionary = edit_range.get("end", {})
+	var line := int(start.get("line", -1))
+	var column := int(start.get("character", -1))
+	var end_line := int(end.get("line", -1))
+	var end_column := int(end.get("character", -1))
+	var old_text := _rename_get_range_text(uri, line, column, end_line, end_column)
+	var new_text := str(edit.get("newText", ""))
+
+	return "%s:%d:%d-%d:%d %s -> %s" % [
+		_rename_display_uri(uri),
+		line + 1,
+		column + 1,
+		end_line + 1,
+		end_column + 1,
+		_rename_debug_preview(old_text, 120),
+		_rename_debug_preview(new_text, 120),
+	]
+
+
+func _rename_get_range_text(uri: String, from_line: int, from_col: int, to_line: int, to_col: int) -> String:
+	var text := _rename_get_text_for_uri(uri)
+	if text.is_empty():
+		return ""
+
+	var lines := text.split("\n")
+	if from_line < 0 or from_line >= lines.size() or to_line < 0 or to_line >= lines.size():
+		return ""
+
+	if from_line == to_line:
+		return lines[from_line].substr(from_col, max(0, to_col - from_col))
+
+	var parts := []
+	parts.append(lines[from_line].substr(from_col))
+	for line_index in range(from_line + 1, to_line):
+		parts.append(lines[line_index])
+	parts.append(lines[to_line].substr(0, to_col))
+	return "\n".join(parts)
+
+
+func _rename_get_text_for_uri(uri: String) -> String:
+	var current_uri := _path_to_file_uri(ProjectSettings.globalize_path(_rename_script_path))
+	if uri == current_uri and _rename_code != null:
+		return _get_code_text(_rename_code)
+
+	var file := FileAccess.open(_file_uri_to_path(uri), FileAccess.READ)
+	if file == null:
+		return ""
+
+	return file.get_as_text()
+
+
+func _file_uri_to_path(uri: String) -> String:
+	return uri.trim_prefix("file://").uri_decode()
+
+
+func _rename_display_uri(uri: String) -> String:
+	var path := _file_uri_to_path(uri)
+	var localized := ProjectSettings.localize_path(path)
+	if localized == path:
+		return path
+
+	return localized
+
+
+func _rename_debug_preview(value: Variant, max_length: int = 500) -> String:
+	var text := JSON.stringify(value)
+	if text.length() <= max_length:
+		return text
+
+	return text.left(max_length) + "... <truncated>"
+
+
+func _rename_text_signature(text: String) -> String:
+	return "%d:%d" % [text.length(), text.hash()]
+
+
+func _rename_apply_text_edits_to_file(uri: String, edits: Array) -> String:
+	var path := _file_uri_to_path(uri)
+	var source_file := FileAccess.open(path, FileAccess.READ)
+	if source_file == null:
+		print("Rename Symbol: could not read %s." % _rename_display_uri(uri))
+		return ""
+
+	var source_text := source_file.get_as_text()
+	source_file = null
+	var updated_text := _rename_apply_text_edits_to_text(source_text, edits)
+	if not SmartRenameWorkspaceEdit.write_text_to_file(path, updated_text):
+		print("Rename Symbol: could not write %s." % _rename_display_uri(uri))
+		return ""
+
+	return updated_text
+
+
+func _rename_apply_text_edits_to_text(text: String, edits: Array) -> String:
+	return SmartRenameWorkspaceEdit.apply_text_edits_to_text(text, edits)
+
+
+func _rename_line_col_to_offset(text: String, line: int, column: int) -> int:
+	return SmartRenameWorkspaceEdit.line_col_to_offset(text, line, column)
 
 
 func _compare_text_edits_desc(a: Dictionary, b: Dictionary) -> bool:
-	var a_start: Dictionary = a["range"]["start"]
-	var b_start: Dictionary = b["range"]["start"]
-	if a_start["line"] == b_start["line"]:
-		return a_start["character"] > b_start["character"]
-	return a_start["line"] > b_start["line"]
+	return SmartRenameWorkspaceEdit._compare_text_edits_desc(a, b)
+
+
+func _compare_rename_open_apply_items(a: Dictionary, b: Dictionary) -> bool:
+	var a_score := int(a.get("definition_score", 0))
+	var b_score := int(b.get("definition_score", 0))
+	if a_score != b_score:
+		return a_score > b_score
+
+	var a_edits := int(a.get("edits", 0))
+	var b_edits := int(b.get("edits", 0))
+	if a_edits != b_edits:
+		return a_edits > b_edits
+
+	return str(a.get("uri", "")) < str(b.get("uri", ""))
+
+
+func _rename_definition_score_for_code(code: CodeEdit, edits: Array, symbol: String) -> int:
+	if code == null or symbol.is_empty():
+		return 0
+
+	var score := 0
+	var seen_lines := {}
+	for edit in edits:
+		if typeof(edit) != TYPE_DICTIONARY:
+			continue
+
+		var edit_dict: Dictionary = edit
+		var range_value: Variant = edit_dict.get("range", null)
+		if typeof(range_value) != TYPE_DICTIONARY:
+			continue
+
+		var range_dict: Dictionary = range_value
+		var start_value: Variant = range_dict.get("start", null)
+		if typeof(start_value) != TYPE_DICTIONARY:
+			continue
+
+		var start_dict: Dictionary = start_value
+		var line_index := int(start_dict.get("line", -1))
+		if line_index < 0 or line_index >= code.get_line_count() or seen_lines.has(line_index):
+			continue
+
+		seen_lines[line_index] = true
+		var line_score := _rename_declaration_line_score(code.get_line(line_index), symbol)
+		if line_score > score:
+			score = line_score
+
+	return score
+
+
+func _rename_declaration_line_score(line: String, symbol: String) -> int:
+	var trimmed := line.strip_edges()
+	if _rename_line_starts_with_symbol_declaration(trimmed, "const ", symbol):
+		return 100
+	if _rename_line_starts_with_symbol_declaration(trimmed, "static func ", symbol):
+		return 100
+	if _rename_line_starts_with_symbol_declaration(trimmed, "func ", symbol):
+		return 100
+	if _rename_line_starts_with_symbol_declaration(trimmed, "var ", symbol):
+		return 90
+	if _rename_line_starts_with_symbol_declaration(trimmed, "signal ", symbol):
+		return 90
+	if _rename_line_starts_with_symbol_declaration(trimmed, "class_name ", symbol):
+		return 90
+	if _rename_line_contains_symbol_declaration(trimmed, " var ", symbol):
+		return 85
+	if _rename_line_contains_symbol_declaration(trimmed, " func ", symbol):
+		return 80
+
+	return 0
+
+
+func _rename_line_starts_with_symbol_declaration(line: String, prefix: String, symbol: String) -> bool:
+	var candidate := prefix + symbol
+	if not line.begins_with(candidate):
+		return false
+	return _rename_symbol_has_boundary_after(line, candidate.length())
+
+
+func _rename_line_contains_symbol_declaration(line: String, marker: String, symbol: String) -> bool:
+	var candidate := marker + symbol
+	var index := line.find(candidate)
+	if index == -1:
+		return false
+	return _rename_symbol_has_boundary_after(line, index + candidate.length())
+
+
+func _rename_symbol_has_boundary_after(line: String, column: int) -> bool:
+	if column >= line.length():
+		return true
+	return not _is_identifier_char(line[column])
 
 
 func _rename_reset_connection() -> void:
@@ -820,6 +1223,7 @@ func _rename_reset_connection() -> void:
 	_rename_last_status = StreamPeerTCP.STATUS_NONE
 	_rename_opened_documents.clear()
 	_rename_document_versions.clear()
+	_rename_document_text_signatures.clear()
 
 
 func _rename_next_request_id() -> int:
@@ -1472,8 +1876,9 @@ func _compare_positions(line_a: int, col_a: int, line_b: int, col_b: int) -> int
 	return SmartSelectionRange.compare_positions(line_a, col_a, line_b, col_b)
 
 func _debug_rename(message: String) -> void:
-	if _debug_logs_enabled():
+	if _rename_probe_logs_enabled():
 		print("Rename Symbol: " + message)
+
 
 func _debug_inline(message: String) -> void:
 	if _debug_logs_enabled():

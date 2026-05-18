@@ -3,14 +3,42 @@ extends GdUnitTestSuite
 const SymbolUsageController := preload("res://addons/smart-editor-plugin/smart_symbol_usage_controller.gd")
 
 
+class CapturingSymbolUsageController:
+	extends SymbolUsageController
+
+	var sent_messages: Array[Dictionary] = []
+
+
+	func _send_message(message: Dictionary) -> void:
+		sent_messages.append(message.duplicate(true))
+
+
+class QueuingSymbolUsageController:
+	extends SymbolUsageController
+
+
+	func _lsp_enabled() -> bool:
+		return true
+
+
+	func _ensure_connection() -> bool:
+		return true
+
+
+	func _try_send_references_request() -> void:
+		pass
+
+
 class FakeSymbolUsageView:
 	var references: Array = []
 	var line_count := 0
 	var current_reference := {}
 	var clear_count := 0
+	var set_count := 0
 
 
 	func set_usage_references(new_references: Array, new_line_count: int, new_current_reference: Dictionary) -> void:
+		set_count += 1
 		references = new_references.duplicate()
 		line_count = new_line_count
 		current_reference = new_current_reference.duplicate()
@@ -34,7 +62,14 @@ func test_initialize_request_guard_accepts_initialize_marker() -> void:
 	assert_bool(SymbolUsageController._is_initialize_request("initialize")).is_true()
 
 
-func test_caret_changes_use_fast_debounce() -> void:
+func test_controller_runs_when_either_stripe_or_highlight_is_enabled() -> void:
+	assert_bool(SymbolUsageController.should_run_controller(true, false)).is_true()
+	assert_bool(SymbolUsageController.should_run_controller(false, true)).is_true()
+	assert_bool(SymbolUsageController.should_run_controller(true, true)).is_true()
+	assert_bool(SymbolUsageController.should_run_controller(false, false)).is_false()
+
+
+func test_caret_changes_use_idle_debounce() -> void:
 	var controller := SymbolUsageController.new()
 
 	controller._on_code_caret_changed()
@@ -47,6 +82,19 @@ func test_caret_changes_use_fast_debounce() -> void:
 	)
 
 	controller.free()
+
+
+func test_navigation_delay_includes_mouse_and_arrow_keys() -> void:
+	assert_bool(SymbolUsageController._is_navigation_key(KEY_UP)).is_true()
+	assert_bool(SymbolUsageController._is_navigation_key(KEY_DOWN)).is_true()
+	assert_bool(SymbolUsageController._is_navigation_key(KEY_LEFT)).is_true()
+	assert_bool(SymbolUsageController._is_navigation_key(KEY_RIGHT)).is_true()
+	assert_bool(SymbolUsageController._is_navigation_key(KEY_A)).is_false()
+
+
+func test_caret_debounce_stays_responsive() -> void:
+	assert_float(SymbolUsageController.CARET_DEBOUNCE_SECONDS).is_less_equal(0.05)
+	assert_float(SymbolUsageController.NAVIGATION_SETTLE_SECONDS).is_less(SymbolUsageController.TEXT_DEBOUNCE_SECONDS)
 
 
 func test_caret_changes_reset_existing_caret_debounce() -> void:
@@ -62,6 +110,126 @@ func test_caret_changes_reset_existing_caret_debounce() -> void:
 		SymbolUsageController.CARET_DEBOUNCE_SECONDS,
 		0.001
 	)
+
+	controller.free()
+
+
+func test_symbol_change_paints_local_references_before_lsp_response_arrives() -> void:
+	var code := CodeEdit.new()
+	code.text = "\n".join([
+		"var first := 1",
+		"var second := 2",
+		"print(second)",
+	])
+	code.set_caret_line(1)
+	code.set_caret_column(6)
+
+	var stripe := FakeSymbolUsageView.new()
+	var highlight := FakeSymbolUsageView.new()
+	stripe.set_usage_references([_ref(0, 4, 9)], 3, _ref(0, 4, 9))
+	highlight.set_usage_references([_ref(0, 4, 9)], 3, _ref(0, 4, 9))
+
+	var controller := QueuingSymbolUsageController.new()
+	controller._code = code
+	controller._uri = "file:///project/player.gd"
+	controller._stripe = stripe
+	controller._highlight = highlight
+
+	controller._refresh_references()
+
+	assert_int(stripe.clear_count).is_equal(0)
+	assert_int(highlight.clear_count).is_equal(0)
+	assert_array(stripe.references).is_equal([
+		_ref(1, 4, 10),
+		_ref(2, 6, 12),
+	])
+	assert_array(highlight.references).is_equal(stripe.references)
+	assert_str(controller._queued_request["symbol"]).is_equal("second")
+
+	controller.free()
+	code.free()
+
+
+func test_lsp_disabled_uses_local_references_without_queuing_request() -> void:
+	var code := CodeEdit.new()
+	code.text = "\n".join([
+		"var first := 1",
+		"var second := 2",
+		"print(second)",
+	])
+	code.set_caret_line(1)
+	code.set_caret_column(6)
+
+	var highlight := FakeSymbolUsageView.new()
+	var controller := SymbolUsageController.new()
+	controller._code = code
+	controller._uri = "file:///project/player.gd"
+	controller._highlight = highlight
+
+	controller._refresh_references()
+
+	assert_array(highlight.references).is_equal([
+		_ref(1, 4, 10),
+		_ref(2, 6, 12),
+	])
+	assert_dict(controller._queued_request).is_empty()
+	assert_int(controller._tcp.get_status()).is_equal(StreamPeerTCP.STATUS_NONE)
+
+	controller.free()
+	code.free()
+
+
+func test_member_call_symbol_change_clears_references_while_waiting_for_lsp() -> void:
+	var code := CodeEdit.new()
+	code.text = "\n".join([
+		"func clear_references() -> void:",
+		"\t_references.clear()",
+		"\t_current_reference.clear()",
+	])
+	code.set_caret_line(1)
+	code.set_caret_column(14)
+
+	var stripe := FakeSymbolUsageView.new()
+	var highlight := FakeSymbolUsageView.new()
+	stripe.set_usage_references([_ref(0, 5, 21)], 3, _ref(0, 5, 21))
+	highlight.set_usage_references([_ref(0, 5, 21)], 3, _ref(0, 5, 21))
+
+	var controller := QueuingSymbolUsageController.new()
+	controller._code = code
+	controller._uri = "file:///project/player.gd"
+	controller._stripe = stripe
+	controller._highlight = highlight
+
+	controller._refresh_references()
+
+	assert_int(stripe.clear_count).is_equal(1)
+	assert_int(highlight.clear_count).is_equal(1)
+	assert_array(stripe.references).is_empty()
+	assert_str(controller._queued_request["symbol"]).is_equal("clear")
+
+	controller.free()
+	code.free()
+
+
+func test_duplicate_references_do_not_update_views_again() -> void:
+	var stripe := FakeSymbolUsageView.new()
+	var highlight := FakeSymbolUsageView.new()
+	var controller := SymbolUsageController.new()
+	controller._stripe = stripe
+	controller._highlight = highlight
+	var references: Array[Dictionary] = [
+		_ref(0, 4, 10),
+		_ref(1, 6, 12),
+	]
+	var current_reference := _ref(0, 4, 10)
+
+	controller._set_usage_references(references, 2, current_reference)
+	controller._set_usage_references(references, 2, current_reference)
+
+	assert_int(stripe.set_count).is_equal(1)
+	assert_int(highlight.set_count).is_equal(1)
+	assert_array(stripe.references).is_equal(references)
+	assert_array(highlight.references).is_equal(references)
 
 	controller.free()
 
@@ -143,6 +311,50 @@ func test_reference_request_waits_for_pending_reference_response() -> void:
 	assert_dict(controller._queued_request).is_not_empty()
 
 	controller.free()
+
+
+func test_document_sync_skips_did_change_when_code_version_is_already_synced() -> void:
+	var code := CodeEdit.new()
+	code.text = "var health := 10"
+
+	var controller := CapturingSymbolUsageController.new()
+	controller._code = code
+	var request := {
+		"uri": "file:///project/player.gd",
+		"code_version": code.get_version(),
+	}
+
+	controller._send_document_sync_notification(request)
+	controller._send_document_sync_notification(request)
+
+	assert_int(controller.sent_messages.size()).is_equal(1)
+	assert_str(controller.sent_messages[0]["method"]).is_equal("textDocument/didOpen")
+
+	controller.free()
+	code.free()
+
+
+func test_document_sync_sends_did_change_after_code_version_changes() -> void:
+	var code := CodeEdit.new()
+	code.text = "var health := 10"
+
+	var controller := CapturingSymbolUsageController.new()
+	controller._code = code
+	var request := {
+		"uri": "file:///project/player.gd",
+		"code_version": code.get_version(),
+	}
+	controller._send_document_sync_notification(request)
+
+	code.text = "var health := 20"
+	request["code_version"] = code.get_version()
+	controller._send_document_sync_notification(request)
+
+	assert_int(controller.sent_messages.size()).is_equal(2)
+	assert_str(controller.sent_messages[1]["method"]).is_equal("textDocument/didChange")
+
+	controller.free()
+	code.free()
 
 
 func test_empty_lsp_references_fall_back_to_current_file_function_tokens() -> void:

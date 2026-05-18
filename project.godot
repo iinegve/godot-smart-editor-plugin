@@ -21,4 +21,4 @@ version_control/autoload_on_startup=true
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/script-ide/plugin.cfg", "res://addons/smart-editor-plugin/plugin.cfg", "res://addons/gdUnit4/plugin.cfg")
+enabled=PackedStringArray("res://addons/gdUnit4/plugin.cfg", "res://addons/script-ide/plugin.cfg", "res://addons/smart-editor-plugin/plugin.cfg")
