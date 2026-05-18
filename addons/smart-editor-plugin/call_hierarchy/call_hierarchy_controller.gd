@@ -94,6 +94,11 @@ func _shortcut_input(event: InputEvent) -> void:
 	if not event.is_pressed() or event.is_echo():
 		return
 
+	if _is_focus_editor_shortcut(event) and _dock_has_focus():
+		_focus_editor()
+		get_viewport().set_input_as_handled()
+		return
+
 	if not _is_call_hierarchy_shortcut(event):
 		return
 
@@ -408,6 +413,11 @@ func _load_callers_for_item(item: TreeItem, metadata: Dictionary) -> void:
 func _on_tree_gui_input(event: InputEvent) -> void:
 	if not event.is_pressed() or event.is_echo():
 		return
+	if _is_focus_editor_shortcut(event):
+		_focus_editor()
+		_tree.get_viewport().set_input_as_handled()
+		return
+
 	var shortcut = _get_plugin_setting(SETTING_GO_TO_SHORTCUT, null)
 	if shortcut is Shortcut and shortcut.matches_event(event):
 		_open_selected_item()
@@ -430,6 +440,32 @@ func _open_selected_item() -> void:
 		int(metadata.get("open_line", metadata["line"])),
 		int(metadata.get("open_character", metadata.get("character", 0)))
 	)
+
+
+func _focus_editor() -> void:
+	var code := _code
+	if code == null or not is_instance_valid(code):
+		code = _get_current_code_edit()
+	if code == null:
+		return
+
+	code.grab_focus()
+
+
+func _dock_has_focus() -> bool:
+	if _panel == null or not is_instance_valid(_panel):
+		return false
+
+	var focus_owner := get_viewport().gui_get_focus_owner()
+	return focus_owner != null and (focus_owner == _panel or _panel.is_ancestor_of(focus_owner))
+
+
+static func _is_focus_editor_shortcut(event: InputEvent) -> bool:
+	if not event is InputEventKey:
+		return false
+
+	var key_event := event as InputEventKey
+	return key_event.keycode == KEY_ESCAPE or key_event.physical_keycode == KEY_ESCAPE
 
 
 func _queue_request(item: TreeItem) -> void:
