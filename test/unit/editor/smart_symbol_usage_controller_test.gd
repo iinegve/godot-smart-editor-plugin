@@ -3,16 +3,6 @@ extends GdUnitTestSuite
 const SymbolUsageController := preload("res://addons/smart-editor-plugin/smart_editor/smart_symbol_usage_controller.gd")
 
 
-class CapturingSymbolUsageController:
-	extends SymbolUsageController
-
-	var sent_messages: Array[Dictionary] = []
-
-
-	func _send_message(message: Dictionary) -> void:
-		sent_messages.append(message.duplicate(true))
-
-
 class QueuingSymbolUsageController:
 	extends SymbolUsageController
 
@@ -49,17 +39,6 @@ class FakeSymbolUsageView:
 		references.clear()
 		line_count = 0
 		current_reference.clear()
-
-
-func test_initialize_request_guard_rejects_dictionary_requests() -> void:
-	assert_bool(SymbolUsageController._is_initialize_request({
-		"uri": "file:///project/player.gd",
-		"symbol": "health",
-	})).is_false()
-
-
-func test_initialize_request_guard_accepts_initialize_marker() -> void:
-	assert_bool(SymbolUsageController._is_initialize_request("initialize")).is_true()
 
 
 func test_controller_runs_when_either_stripe_or_highlight_is_enabled() -> void:
@@ -173,7 +152,7 @@ func test_lsp_disabled_uses_local_references_without_queuing_request() -> void:
 		_ref(2, 6, 12),
 	])
 	assert_dict(controller._queued_request).is_empty()
-	assert_int(controller._tcp.get_status()).is_equal(StreamPeerTCP.STATUS_NONE)
+	assert_int(controller._lsp.get_status()).is_equal(StreamPeerTCP.STATUS_NONE)
 
 	controller.free()
 	code.free()
@@ -272,89 +251,6 @@ func test_caret_changes_do_not_shorten_pending_text_debounce() -> void:
 	assert_float(controller._debounce_remaining).is_equal_approx(0.5, 0.001)
 
 	controller.free()
-
-
-func test_reference_request_waits_for_pending_caret_debounce() -> void:
-	var controller := SymbolUsageController.new()
-	controller._initialized = true
-	controller._refresh_pending = true
-	controller._debounce_remaining = SymbolUsageController.CARET_DEBOUNCE_SECONDS
-	controller._queued_request = {
-		"request_kind": "references",
-		"uri": "file:///project/player.gd",
-		"symbol": "health",
-	}
-
-	controller._try_send_references_request()
-
-	assert_dict(controller._queued_request).is_not_empty()
-
-	controller.free()
-
-
-func test_reference_request_waits_for_pending_reference_response() -> void:
-	var controller := SymbolUsageController.new()
-	controller._initialized = true
-	controller._queued_request = {
-		"request_kind": "references",
-		"uri": "file:///project/player.gd",
-		"symbol": "health",
-	}
-	controller._pending_requests[7] = {
-		"request_kind": "references",
-		"uri": "file:///project/player.gd",
-		"symbol": "previous",
-	}
-
-	controller._try_send_references_request()
-
-	assert_dict(controller._queued_request).is_not_empty()
-
-	controller.free()
-
-
-func test_document_sync_skips_did_change_when_code_version_is_already_synced() -> void:
-	var code := CodeEdit.new()
-	code.text = "var health := 10"
-
-	var controller := CapturingSymbolUsageController.new()
-	controller._code = code
-	var request := {
-		"uri": "file:///project/player.gd",
-		"code_version": code.get_version(),
-	}
-
-	controller._send_document_sync_notification(request)
-	controller._send_document_sync_notification(request)
-
-	assert_int(controller.sent_messages.size()).is_equal(1)
-	assert_str(controller.sent_messages[0]["method"]).is_equal("textDocument/didOpen")
-
-	controller.free()
-	code.free()
-
-
-func test_document_sync_sends_did_change_after_code_version_changes() -> void:
-	var code := CodeEdit.new()
-	code.text = "var health := 10"
-
-	var controller := CapturingSymbolUsageController.new()
-	controller._code = code
-	var request := {
-		"uri": "file:///project/player.gd",
-		"code_version": code.get_version(),
-	}
-	controller._send_document_sync_notification(request)
-
-	code.text = "var health := 20"
-	request["code_version"] = code.get_version()
-	controller._send_document_sync_notification(request)
-
-	assert_int(controller.sent_messages.size()).is_equal(2)
-	assert_str(controller.sent_messages[1]["method"]).is_equal("textDocument/didChange")
-
-	controller.free()
-	code.free()
 
 
 func test_empty_lsp_references_fall_back_to_current_file_function_tokens() -> void:
