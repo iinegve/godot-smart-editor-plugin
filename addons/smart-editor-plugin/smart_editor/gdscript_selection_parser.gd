@@ -1,9 +1,9 @@
 @tool
 extends RefCounted
 
-const SmartSelectionRange := preload("res://addons/smart-editor-plugin/smart_selection_range.gd")
-const GDScriptTokenizer := preload("res://addons/smart-editor-plugin/gdscript_tokenizer.gd")
-const GDScriptExpressionParser := preload("res://addons/smart-editor-plugin/gdscript_expression_parser.gd")
+const SmartSelectionRange := preload("res://addons/smart-editor-plugin/smart_editor/smart_selection_range.gd")
+const GDScriptTokenizer := preload("res://addons/smart-editor-plugin/smart_editor/gdscript_tokenizer.gd")
+const GDScriptExpressionParser := preload("res://addons/smart-editor-plugin/smart_editor/gdscript_expression_parser.gd")
 const IDENTIFIER_CHARS := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
 
 const KIND_FILE := "file"

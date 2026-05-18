@@ -1,9 +1,10 @@
 @tool
 extends Node
 
-const SymbolUsageModel := preload("res://addons/smart-editor-plugin/smart_symbol_usage_model.gd")
-const SymbolUsageHighlight := preload("res://addons/smart-editor-plugin/smart_symbol_usage_highlight.gd")
-const SymbolUsageStripe := preload("res://addons/smart-editor-plugin/smart_symbol_usage_stripe.gd")
+const SymbolUsageModel := preload("res://addons/smart-editor-plugin/smart_editor/smart_symbol_usage_model.gd")
+const SymbolUsageHighlight := preload("res://addons/smart-editor-plugin/smart_editor/smart_symbol_usage_highlight.gd")
+const SymbolUsageStripe := preload("res://addons/smart-editor-plugin/smart_editor/smart_symbol_usage_stripe.gd")
+const LspClient := preload("res://addons/smart-editor-plugin/common/lsp_client.gd")
 const STRIPE_WIDTH := 8.0
 const CARET_DEBOUNCE_SECONDS := 0.04
 const NAVIGATION_SETTLE_SECONDS := 0.08
@@ -34,16 +35,8 @@ var _last_references: Array[Dictionary] = []
 var _last_line_count := 0
 var _last_current_reference := {}
 
-var _tcp := StreamPeerTCP.new()
-var _read_buffer := PackedByteArray()
-var _next_id := 1
-var _pending_requests := {}
+var _lsp := LspClient.new()
 var _queued_request := {}
-var _initialized := false
-var _last_status := StreamPeerTCP.STATUS_NONE
-var _opened_documents := {}
-var _document_versions := {}
-var _synced_code_versions := {}
 
 
 func configure(
@@ -66,6 +59,13 @@ func configure(
 	_current_highlight_color_setting = current_highlight_color_setting
 	_current_outline_color_setting = current_outline_color_setting
 	_lsp_enabled_setting = lsp_enabled_setting
+	_lsp.configure("Symbol Usage", _host, _port, {
+		"textDocument": {
+			"references": {
+				"dynamicRegistration": false,
+			},
+		},
+	}, _debug)
 	set_process(true)
 	_connect_script_editor()
 	_attach_to_current_code_edit()
@@ -75,7 +75,7 @@ func configure(
 func _exit_tree() -> void:
 	_disconnect_script_editor()
 	_detach_code_edit()
-	_tcp.disconnect_from_host()
+	_lsp.disconnect_from_host()
 
 
 func _process(delta: float) -> void:
@@ -99,7 +99,7 @@ func _process(delta: float) -> void:
 
 	var delay_for_navigation := _refresh_pending and _should_delay_caret_refresh_for_navigation()
 	if not _lsp_enabled():
-		if _tcp.get_status() != StreamPeerTCP.STATUS_NONE:
+		if _lsp.get_status() != StreamPeerTCP.STATUS_NONE:
 			_reset_connection()
 	elif not delay_for_navigation:
 		_process_connection()
@@ -194,7 +194,7 @@ func _detach_code_edit() -> void:
 func _disable_feature() -> void:
 	if _code != null or _stripe != null or _highlight != null:
 		_detach_code_edit()
-	if _tcp.get_status() != StreamPeerTCP.STATUS_NONE:
+	if _lsp.get_status() != StreamPeerTCP.STATUS_NONE:
 		_reset_connection()
 
 
@@ -365,82 +365,25 @@ func _refresh_references() -> void:
 
 
 func _process_connection() -> void:
-	if _tcp.get_status() == StreamPeerTCP.STATUS_NONE:
+	if _lsp.get_status() == StreamPeerTCP.STATUS_NONE:
 		return
 
-	_tcp.poll()
-	var status := _tcp.get_status()
-	if status != _last_status:
-		_debug("TCP status changed to %d." % status)
-		_last_status = status
-
-	if status == StreamPeerTCP.STATUS_CONNECTED:
-		_read_available_messages()
-		if not _initialized and not _has_pending_initialize_request():
-			_send_initialize_request()
-		_try_send_references_request()
-	elif status == StreamPeerTCP.STATUS_ERROR:
-		_debug("connection error.")
-		_clear_references()
-		_reset_connection()
+	var responses := _lsp.poll()
+	for response in responses:
+		_handle_response(response)
+	_try_send_references_request()
 
 
 func _ensure_connection() -> bool:
-	var status := _tcp.get_status()
-	if status == StreamPeerTCP.STATUS_CONNECTED or status == StreamPeerTCP.STATUS_CONNECTING:
-		return true
-
-	_reset_connection()
-	var err := _tcp.connect_to_host(_host, _port)
-	if err != OK:
-		return false
-
-	_debug("connecting to code analysis service at %s:%d..." % [_host, _port])
-	return true
-
-
-func _send_initialize_request() -> void:
-	var root_path := ProjectSettings.globalize_path("res://")
-	var root_uri := _path_to_file_uri(root_path)
-	var id := _next_request_id()
-	_pending_requests[id] = "initialize"
-
-	_send_message({
-		"jsonrpc": "2.0",
-		"id": id,
-		"method": "initialize",
-		"params": {
-			"processId": OS.get_process_id(),
-			"rootUri": root_uri,
-			"capabilities": {
-				"textDocument": {
-					"references": {
-						"dynamicRegistration": false,
-					},
-				},
-			},
-			"workspaceFolders": [{
-				"uri": root_uri,
-				"name": ProjectSettings.get_setting("application/config/name", "Godot Project"),
-			}],
-		},
-	})
-
-
-func _send_initialized_notification() -> void:
-	_send_message({
-		"jsonrpc": "2.0",
-		"method": "initialized",
-		"params": {},
-	})
+	return _lsp.ensure_connection(false)
 
 
 func _try_send_references_request() -> void:
-	if _queued_request.is_empty() or not _initialized:
+	if _queued_request.is_empty() or not _lsp.is_initialized():
 		return
 	if _refresh_pending:
 		return
-	if _has_pending_reference_request():
+	if _lsp.has_pending_kind("references"):
 		return
 
 	var request := _queued_request.duplicate()
@@ -449,116 +392,31 @@ func _try_send_references_request() -> void:
 		return
 
 	_send_document_sync_notification(request)
-
-	var id := _next_request_id()
-	_pending_requests[id] = request
 	_queued_request.clear()
 
-	_send_message({
-		"jsonrpc": "2.0",
-		"id": id,
-		"method": "textDocument/references",
-		"params": {
-			"textDocument": {
-				"uri": request["uri"],
-			},
-			"position": {
-				"line": request["line"],
-				"character": request["column"],
-			},
-			"context": {
-				"includeDeclaration": true,
-			},
+	_lsp.send_request("references", "textDocument/references", {
+		"textDocument": {
+			"uri": request["uri"],
 		},
-	})
+		"position": {
+			"line": request["line"],
+			"character": request["column"],
+		},
+		"context": {
+			"includeDeclaration": true,
+		},
+	}, request)
 	_debug("sent references request for '%s'." % request["symbol"])
 
 
 func _send_document_sync_notification(request: Dictionary) -> void:
 	var uri: String = request["uri"]
-	var code_version := int(request.get("code_version", -1))
-	var version := int(_document_versions.get(uri, 0)) + 1
-
-	if not _opened_documents.has(uri):
-		_opened_documents[uri] = true
-		_document_versions[uri] = version
-		_synced_code_versions[uri] = code_version
-		var did_open_text := _get_code_text(_code)
-		_send_message({
-			"jsonrpc": "2.0",
-			"method": "textDocument/didOpen",
-			"params": {
-				"textDocument": {
-					"uri": uri,
-					"languageId": "gdscript",
-					"version": version,
-					"text": did_open_text,
-				},
-			},
-		})
-		return
-
-	if int(_synced_code_versions.get(uri, -2)) == code_version:
-		return
-
-	_document_versions[uri] = version
-	_synced_code_versions[uri] = code_version
-	var did_change_text := _get_code_text(_code)
-	_send_message({
-		"jsonrpc": "2.0",
-		"method": "textDocument/didChange",
-		"params": {
-			"textDocument": {
-				"uri": uri,
-				"version": version,
-			},
-			"contentChanges": [{
-				"text": did_change_text,
-			}],
-		},
-	})
+	_lsp.sync_document(uri, _get_code_text(_code))
 
 
-func _send_message(message: Dictionary) -> void:
-	var body := JSON.stringify(message)
-	var packet := "Content-Length: %d\r\n\r\n%s" % [body.to_utf8_buffer().size(), body]
-	var err := _tcp.put_data(packet.to_utf8_buffer())
-	if err != OK:
-		_debug("failed sending request, error %d." % err)
-
-
-func _read_available_messages() -> void:
-	var available := _tcp.get_available_bytes()
-	if available <= 0:
-		return
-
-	var read_result := _tcp.get_data(available)
-	if read_result[0] != OK:
-		_debug("failed reading response.")
-		return
-
-	_read_buffer.append_array(read_result[1])
-	while true:
-		var body := _try_extract_lsp_body(_read_buffer)
-		if body.is_empty():
-			return
-
-		_read_buffer = _consume_lsp_message(_read_buffer)
-		var message = JSON.parse_string(body)
-		if typeof(message) == TYPE_DICTIONARY:
-			_handle_message(message)
-
-
-func _handle_message(message: Dictionary) -> void:
-	if not message.has("id"):
-		return
-
-	var id := _normalize_response_id(message["id"])
-	if not _pending_requests.has(id):
-		return
-
-	var request = _pending_requests[id]
-	_pending_requests.erase(id)
+func _handle_response(response: Dictionary) -> void:
+	var request = response.get("context", {})
+	var message: Dictionary = response.get("message", {})
 
 	if message.has("error"):
 		_debug("request failed: %s" % JSON.stringify(message["error"]))
@@ -566,11 +424,7 @@ func _handle_message(message: Dictionary) -> void:
 			_apply_fallback_references(request)
 		return
 
-	if _is_initialize_request(request):
-		_initialized = true
-		_send_initialized_notification()
-		_try_send_references_request()
-	elif typeof(request) == TYPE_DICTIONARY:
+	if typeof(request) == TYPE_DICTIONARY:
 		var request_kind := str(request.get("request_kind", "references"))
 		if request_kind == "references":
 			_apply_references(message.get("result", []), request)
@@ -806,39 +660,9 @@ func _compare_reference_positions(a: Dictionary, b: Dictionary) -> int:
 	return int(a.get("column", 0)) - int(b.get("column", 0))
 
 
-func _has_pending_reference_request() -> bool:
-	for request in _pending_requests.values():
-		if typeof(request) != TYPE_DICTIONARY:
-			continue
-		if str(request.get("request_kind", "references")) == "references":
-			return true
-
-	return false
-
-
 func _reset_connection() -> void:
-	_tcp.disconnect_from_host()
-	_tcp = StreamPeerTCP.new()
-	_read_buffer.clear()
-	_pending_requests.clear()
+	_lsp.reset()
 	_queued_request.clear()
-	_initialized = false
-	_last_status = StreamPeerTCP.STATUS_NONE
-	_opened_documents.clear()
-	_document_versions.clear()
-	_synced_code_versions.clear()
-
-
-func _has_pending_initialize_request() -> bool:
-	for request in _pending_requests.values():
-		if _is_initialize_request(request):
-			return true
-
-	return false
-
-
-static func _is_initialize_request(request: Variant) -> bool:
-	return typeof(request) == TYPE_STRING and request == "initialize"
 
 
 static func stripe_rect_for_scrollbars(
@@ -867,12 +691,6 @@ static func stripe_rect_for_scrollbars(
 		width,
 		maxf(0.0, height)
 	)
-
-
-func _next_request_id() -> int:
-	var id := _next_id
-	_next_id += 1
-	return id
 
 
 func _get_current_code_edit() -> CodeEdit:
@@ -911,76 +729,8 @@ func _get_code_text(code: CodeEdit) -> String:
 	return "\n".join(lines)
 
 
-func _try_extract_lsp_body(buffer: PackedByteArray) -> String:
-	var marker := "\r\n\r\n".to_utf8_buffer()
-	var header_end := _find_bytes(buffer, marker)
-	if header_end == -1:
-		return ""
-
-	var header := buffer.slice(0, header_end).get_string_from_utf8()
-	var content_length := _parse_content_length(header)
-	if content_length <= 0:
-		return ""
-
-	var body_start := header_end + marker.size()
-	var body_end := body_start + content_length
-	if buffer.size() < body_end:
-		return ""
-
-	return buffer.slice(body_start, body_end).get_string_from_utf8()
-
-
-func _consume_lsp_message(buffer: PackedByteArray) -> PackedByteArray:
-	var marker := "\r\n\r\n".to_utf8_buffer()
-	var header_end := _find_bytes(buffer, marker)
-	if header_end == -1:
-		return buffer
-
-	var header := buffer.slice(0, header_end).get_string_from_utf8()
-	var content_length := _parse_content_length(header)
-	if content_length <= 0:
-		return buffer.slice(header_end + marker.size())
-
-	var body_end := header_end + marker.size() + content_length
-	if buffer.size() < body_end:
-		return buffer
-
-	return buffer.slice(body_end)
-
-
-func _find_bytes(buffer: PackedByteArray, needle: PackedByteArray) -> int:
-	for index in range(0, buffer.size() - needle.size() + 1):
-		var found := true
-		for needle_index in needle.size():
-			if buffer[index + needle_index] != needle[needle_index]:
-				found = false
-				break
-		if found:
-			return index
-
-	return -1
-
-
-func _parse_content_length(header: String) -> int:
-	for line in header.split("\r\n"):
-		var parts := line.split(":", false, 1)
-		if parts.size() == 2 and parts[0].strip_edges().to_lower() == "content-length":
-			return parts[1].strip_edges().to_int()
-
-	return -1
-
-
 func _path_to_file_uri(path: String) -> String:
-	return "file://" + path.uri_encode().replace("%2F", "/")
-
-
-func _normalize_response_id(id: Variant) -> int:
-	if typeof(id) == TYPE_FLOAT:
-		return int(id)
-	if typeof(id) == TYPE_INT:
-		return id
-
-	return str(id).to_int()
+	return LspClient.path_to_file_uri(path)
 
 
 func _is_enabled() -> bool:

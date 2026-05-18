@@ -1,7 +1,7 @@
 @tool
 extends RefCounted
 
-const SmartSelectionRange := preload("res://addons/smart-editor-plugin/smart_selection_range.gd")
+const SmartSelectionRange := preload("res://addons/smart-editor-plugin/smart_editor/smart_selection_range.gd")
 
 var _history: Array[Dictionary] = []
 

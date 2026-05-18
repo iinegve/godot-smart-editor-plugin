@@ -1,6 +1,6 @@
 extends GdUnitTestSuite
 
-const SmartSelectionHistory := preload("res://addons/smart-editor-plugin/smart_selection_history.gd")
+const SmartSelectionHistory := preload("res://addons/smart-editor-plugin/smart_editor/smart_selection_history.gd")
 
 
 func test_shrink_selection_steps_back_through_expand_history() -> void:

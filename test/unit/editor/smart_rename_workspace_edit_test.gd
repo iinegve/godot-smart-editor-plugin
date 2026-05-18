@@ -1,6 +1,6 @@
 extends GdUnitTestSuite
 
-const SmartRenameWorkspaceEdit := preload("res://addons/smart-editor-plugin/smart_rename_workspace_edit.gd")
+const SmartRenameWorkspaceEdit := preload("res://addons/smart-editor-plugin/common/smart_rename_workspace_edit.gd")
 
 
 func test_workspace_edit_extracts_changes_by_uri() -> void:

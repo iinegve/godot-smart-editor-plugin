@@ -1,6 +1,6 @@
 extends GdUnitTestSuite
 
-const SymbolUsageController := preload("res://addons/smart-editor-plugin/smart_symbol_usage_controller.gd")
+const SymbolUsageController := preload("res://addons/smart-editor-plugin/smart_editor/smart_symbol_usage_controller.gd")
 
 
 class CapturingSymbolUsageController:

@@ -1,7 +1,7 @@
 @tool
 extends Control
 
-const SymbolUsageModel := preload("res://addons/smart-editor-plugin/smart_symbol_usage_model.gd")
+const SymbolUsageModel := preload("res://addons/smart-editor-plugin/smart_editor/smart_symbol_usage_model.gd")
 const CODE_RECT_COLUMN_OFFSET := 1
 const HORIZONTAL_PADDING := 1.0
 const VERTICAL_PADDING := 0.0
