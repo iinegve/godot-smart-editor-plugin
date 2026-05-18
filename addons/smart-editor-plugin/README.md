@@ -2,6 +2,10 @@
 
 Smart Editor is a Godot editor plugin that adds small IDE-style conveniences to the built-in script editor. It focuses on fast selection, local code navigation, call hierarchy, and lightweight refactoring helpers for GDScript.
 
+## Demo
+
+[![Watch the Smart Editor demo](https://img.youtube.com/vi/nbvFcb0kw1I/hqdefault.jpg)](https://www.youtube.com/watch?v=nbvFcb0kw1I)
+
 ## Features
 
 - Smart expand/shrink selection for GDScript expressions, statements, blocks, function bodies, comments, multiline calls, arrays, dictionaries, and function signatures.
