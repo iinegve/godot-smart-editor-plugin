@@ -311,34 +311,35 @@ func _begin_call_hierarchy() -> void:
 		print("Call Hierarchy: place the caret on a function name or call.")
 		return
 
+	var root_symbol := _call_hierarchy_root_symbol(_current_uri, symbol_range)
 	var root_visited := {}
-	root_visited[_symbol_key(_current_uri, symbol_range["line"], symbol_range["symbol"])] = true
+	root_visited[_symbol_key(root_symbol["uri"], root_symbol["line"], root_symbol["symbol"])] = true
 
 	var root := _tree.create_item()
-	var root_text := _format_method_label(_current_uri, symbol_range["symbol"])
+	var root_text := _format_method_label(root_symbol["uri"], root_symbol["symbol"])
 	_set_item_text(root, root_text)
 	root.set_metadata(0, {
-		"name": symbol_range["symbol"],
-		"uri": _current_uri,
-		"line": symbol_range["line"],
-		"character": symbol_range["column"],
-		"open_line": symbol_range["line"],
-		"open_character": symbol_range["column"],
+		"name": root_symbol["symbol"],
+		"uri": root_symbol["uri"],
+		"line": root_symbol["line"],
+		"character": root_symbol["column"],
+		"open_line": root_symbol["line"],
+		"open_character": root_symbol["column"],
 		"base_text": root_text,
-		"loaded": _is_engine_callback_method(symbol_range["symbol"]),
+		"loaded": _is_engine_callback_method(root_symbol["symbol"]),
 		"visited": root_visited,
 	})
 	root.set_collapsed(false)
 	root.select(0)
 	_node_count = 1
 
-	if _is_engine_callback_method(symbol_range["symbol"]):
+	if _is_engine_callback_method(root_symbol["symbol"]):
 		_add_engine_callback_leaf(root)
-	elif _is_constructor_method(symbol_range["symbol"]):
+	elif _is_constructor_method(root_symbol["symbol"]):
 		_apply_constructor_callers({
 			"item": root,
-			"uri": _current_uri,
-			"line": symbol_range["line"],
+			"uri": root_symbol["uri"],
+			"line": root_symbol["line"],
 			"visited": root_visited,
 		})
 	else:
@@ -857,6 +858,218 @@ func _get_enclosing_function_symbol_range(code: CodeEdit, line_index: int) -> Di
 	return {}
 
 
+func _call_hierarchy_root_symbol(current_uri: String, symbol_range: Dictionary) -> Dictionary:
+	var resolved := _resolve_member_call_root_symbol(current_uri, symbol_range)
+	if not resolved.is_empty():
+		return resolved
+
+	return {
+		"symbol": str(symbol_range["symbol"]),
+		"uri": current_uri,
+		"line": int(symbol_range["line"]),
+		"column": int(symbol_range["column"]),
+	}
+
+
+func _resolve_member_call_root_symbol(current_uri: String, symbol_range: Dictionary) -> Dictionary:
+	var receiver_name := _member_call_receiver_name(current_uri, symbol_range)
+	if receiver_name.is_empty():
+		return {}
+
+	var receiver_type := ""
+	if receiver_name == "self":
+		receiver_type = _find_class_name_for_uri(current_uri)
+	else:
+		receiver_type = _find_identifier_type_for_uri(current_uri, receiver_name, int(symbol_range["line"]))
+
+	var target_uri := ""
+	if receiver_type.is_empty():
+		target_uri = _find_uri_for_class_name(receiver_name)
+	else:
+		target_uri = _find_uri_for_class_name(receiver_type)
+	if target_uri.is_empty():
+		return {}
+
+	return _find_method_symbol_range_for_uri(target_uri, str(symbol_range["symbol"]))
+
+
+func _member_call_receiver_name(uri: String, symbol_range: Dictionary) -> String:
+	var lines := _get_lines_for_uri(uri)
+	var line_index := int(symbol_range.get("line", -1))
+	if line_index < 0 or line_index >= lines.size():
+		return ""
+
+	var line := _strip_line_comment(str(lines[line_index]))
+	var symbol_start := int(symbol_range.get("column", -1))
+	if symbol_start <= 0 or symbol_start > line.length():
+		return ""
+
+	var dot_col := _skip_back_spaces(line, symbol_start - 1)
+	if dot_col < 0 or line[dot_col] != ".":
+		return ""
+
+	var receiver_end := dot_col
+	var receiver_start := receiver_end - 1
+	while receiver_start >= 0 and _is_identifier_char(line[receiver_start]):
+		receiver_start -= 1
+	receiver_start += 1
+	if receiver_start == receiver_end:
+		return ""
+
+	var receiver_name := line.substr(receiver_start, receiver_end - receiver_start)
+	if not _is_valid_identifier(receiver_name):
+		return ""
+	return receiver_name
+
+
+func _find_identifier_type_for_uri(uri: String, identifier_name: String, line_index: int) -> String:
+	var lines := _get_lines_for_uri(uri)
+	if lines.is_empty():
+		return ""
+
+	var enclosing_function := _find_enclosing_function_for_uri(uri, line_index)
+	if not enclosing_function.is_empty():
+		var function_line := int(enclosing_function["line"])
+		for index in range(mini(line_index, lines.size() - 1), function_line, -1):
+			var local_type := _variable_type_from_line(str(lines[index]), identifier_name)
+			if not local_type.is_empty():
+				return local_type
+
+		var parameter_type := _function_parameter_type_from_line(str(lines[function_line]), identifier_name)
+		if not parameter_type.is_empty():
+			return parameter_type
+
+	for index in lines.size():
+		var line := str(lines[index])
+		if line.begins_with(" ") or line.begins_with("\t"):
+			continue
+
+		var member_type := _variable_type_from_line(line, identifier_name)
+		if not member_type.is_empty():
+			return member_type
+
+	return ""
+
+
+func _variable_type_from_line(line: String, variable_name: String) -> String:
+	var code_line := _strip_line_comment(line)
+	var search_from := 0
+	while search_from < code_line.length():
+		var var_index := code_line.find("var ", search_from)
+		if var_index == -1:
+			return ""
+		if var_index > 0 and _is_identifier_char(code_line[var_index - 1]):
+			search_from = var_index + 4
+			continue
+
+		var name_start := _skip_spaces_and_tabs(code_line, var_index + 4)
+		var name_end := name_start
+		while name_end < code_line.length() and _is_identifier_char(code_line[name_end]):
+			name_end += 1
+		if name_start == name_end:
+			search_from = var_index + 4
+			continue
+		if code_line.substr(name_start, name_end - name_start) != variable_name:
+			search_from = name_end
+			continue
+
+		var colon_col := _skip_spaces_and_tabs(code_line, name_end)
+		if colon_col >= code_line.length() or code_line[colon_col] != ":":
+			return ""
+		return _type_name_after_colon(code_line, colon_col)
+
+	return ""
+
+
+func _function_parameter_type_from_line(line: String, parameter_name: String) -> String:
+	var code_line := _strip_line_comment(line)
+	var open_paren := code_line.find("(")
+	if open_paren == -1:
+		return ""
+
+	var close_paren := code_line.find(")", open_paren + 1)
+	if close_paren == -1:
+		return ""
+
+	var parameters := code_line.substr(open_paren + 1, close_paren - open_paren - 1).split(",")
+	for parameter in parameters:
+		var parameter_text := str(parameter).strip_edges()
+		var name_start := 0
+		var name_end := name_start
+		while name_end < parameter_text.length() and _is_identifier_char(parameter_text[name_end]):
+			name_end += 1
+		if name_start == name_end:
+			continue
+		if parameter_text.substr(name_start, name_end - name_start) != parameter_name:
+			continue
+
+		var colon_col := _skip_spaces_and_tabs(parameter_text, name_end)
+		if colon_col >= parameter_text.length() or parameter_text[colon_col] != ":":
+			return ""
+		return _type_name_after_colon(parameter_text, colon_col)
+
+	return ""
+
+
+func _type_name_after_colon(line: String, colon_col: int) -> String:
+	var type_start := _skip_spaces_and_tabs(line, colon_col + 1)
+	var type_end := type_start
+	while type_end < line.length() and (_is_identifier_char(line[type_end]) or line[type_end] == "."):
+		type_end += 1
+	if type_start == type_end:
+		return ""
+
+	var type_name := line.substr(type_start, type_end - type_start)
+	var dot_col := type_name.rfind(".")
+	if dot_col != -1:
+		type_name = type_name.substr(dot_col + 1)
+	return type_name
+
+
+func _find_uri_for_class_name(target_class_name: String) -> String:
+	if target_class_name.is_empty():
+		return ""
+
+	for uri in _file_cache.keys():
+		if _find_class_name_for_uri(str(uri)) == target_class_name:
+			return str(uri)
+
+	for uri in _gdscript_file_uris():
+		if _find_class_name_for_uri(uri) == target_class_name:
+			return uri
+
+	return ""
+
+
+func _find_method_symbol_range_for_uri(uri: String, method_name: String) -> Dictionary:
+	var lines := _get_lines_for_uri(uri)
+	for index in lines.size():
+		var line := _strip_line_comment(str(lines[index]))
+		var func_index := line.find("func ")
+		if func_index == -1:
+			continue
+		if func_index > 0 and _is_identifier_char(line[func_index - 1]):
+			continue
+
+		var name_start := _skip_spaces_and_tabs(line, func_index + 5)
+		var name_end := name_start
+		while name_end < line.length() and _is_identifier_char(line[name_end]):
+			name_end += 1
+		if name_start == name_end:
+			continue
+		if line.substr(name_start, name_end - name_start) != method_name:
+			continue
+
+		return {
+			"symbol": method_name,
+			"uri": uri,
+			"line": index,
+			"column": name_start,
+		}
+
+	return {}
+
+
 func _get_text_for_uri(uri: String) -> String:
 	if uri == _current_uri and _code != null:
 		return _get_code_text(_code)
@@ -1083,6 +1296,18 @@ func _get_selected_or_current_symbol_range(code: CodeEdit) -> Dictionary:
 func _skip_spaces(line: String, col: int) -> int:
 	while col < line.length() and line[col] == " ":
 		col += 1
+	return col
+
+
+func _skip_spaces_and_tabs(line: String, col: int) -> int:
+	while col < line.length() and (line[col] == " " or line[col] == "\t"):
+		col += 1
+	return col
+
+
+func _skip_back_spaces(line: String, col: int) -> int:
+	while col >= 0 and (line[col] == " " or line[col] == "\t"):
+		col -= 1
 	return col
 
 

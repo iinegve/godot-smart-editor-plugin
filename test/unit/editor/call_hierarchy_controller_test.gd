@@ -89,6 +89,39 @@ func test_engine_callback_methods_are_not_loaded_from_lsp() -> void:
 	controller.free()
 
 
+func test_call_hierarchy_root_uses_typed_member_receiver_definition() -> void:
+	var controller := CallHierarchyController.new()
+	var level_uri := LspClient.path_to_file_uri("/project/level.gd")
+	var unit_uri := LspClient.path_to_file_uri("/project/unit.gd")
+	controller._file_cache[level_uri] = [
+		"class_name Level",
+		"var _selected_squad_member: Unit",
+		"",
+		"func _process() -> void:",
+		"\t_selected_squad_member.released()",
+	]
+	controller._file_cache[unit_uri] = [
+		"class_name Unit",
+		"",
+		"func released() -> void:",
+		"\tpass",
+	]
+
+	var root_symbol := controller._call_hierarchy_root_symbol(level_uri, {
+		"symbol": "released",
+		"line": 4,
+		"column": 24,
+	})
+
+	assert_dict(root_symbol).is_equal({
+		"symbol": "released",
+		"uri": unit_uri,
+		"line": 2,
+		"column": 5,
+	})
+	controller.free()
+
+
 func test_escape_key_is_focus_editor_shortcut() -> void:
 	var escape_event := InputEventKey.new()
 	escape_event.keycode = KEY_ESCAPE
