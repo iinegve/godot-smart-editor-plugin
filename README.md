@@ -2,7 +2,7 @@
 
 Smart Editor is a Godot editor plugin that adds small IDE-style conveniences to the built-in script editor. It focuses on fast selection, local code navigation, call hierarchy, and lightweight refactoring helpers for GDScript.
 
-![Smart Editor demo](addons/smart-editor-plugin/media/demo.gif)
+[Watch the demo](https://iinegve.github.io/godot-smart-editor-plugin-demo/)
 
 ## Features
 
@@ -83,7 +83,7 @@ Smart Editor is developed and tested with Godot `4.6.1`. Other Godot `4.6.x` rel
 
 Smart Editor does not try to be a full semantic refactoring engine. Its refactorings are intentionally lightweight and editor-focused.
 
-- `Rename Symbol` depends on Godot's code analysis service and is intended for safe current-file edits. It is not a project-wide function rename tool.
+- `Rename Symbol` depends on Godot's code analysis service. Undo after a rename with multiple changed locations does not revert the whole rename at once in open files, and it cannot undo changes made to closed files.
 - `Call Hierarchy` depends on Godot's code analysis service and groups callers by the enclosing function found in GDScript source text.
 - `Extract Local Variable` and `Inline Variable` operate on recognized GDScript text patterns. They do not perform complete semantic analysis.
 - Smart selection is based on a custom parser for practical editor selection ranges, not Godot's compiler AST. Some unusual syntax can still need more test cases.

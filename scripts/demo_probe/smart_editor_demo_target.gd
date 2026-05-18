@@ -9,7 +9,7 @@ var last_call_site: String = ""
 
 
 func build_round_label(prefix: String, round_count: int) -> String:
-	# Rename this function to demonstrate a cross-file method rename.
+	# Rename this function; closed files are saved directly without editor undo.
 	var scored_round: int = score_round(round_count)
 	return "%s_%d" % [prefix, scored_round]
 

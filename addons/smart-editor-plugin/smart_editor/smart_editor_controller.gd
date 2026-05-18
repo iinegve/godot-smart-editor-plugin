@@ -1054,7 +1054,7 @@ func _begin_inline() -> void:
 	_inline_symbol_column = symbol_range["column"]
 	_inline_expression = _parse_declaration_expression(_inline_code.get_line(_inline_symbol_line), _inline_symbol, _inline_symbol_column)
 	if _inline_expression.is_empty():
-		print("Inline Variable: caret must be on a simple 'var %s = expression' declaration." % _inline_symbol)
+		print("Inline Variable: caret must be on the variable name in a single-line local var declaration.")
 		return
 
 	_inline_uri = _path_to_file_uri(ProjectSettings.globalize_path(_inline_script_path))

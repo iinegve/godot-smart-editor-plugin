@@ -2,12 +2,13 @@
 class_name SmartEditorDemoCaller
 extends RefCounted
 
-const LOCAL_ROUND_LIMIT := 3
+const LOCAL_ROUND_LIMIT_RENAMED := 3
 const SHARED_ROUND_LIMIT := SmartEditorDemoTarget.SHARED_ROUND_LIMIT
 
 var target: SmartEditorDemoTarget = SmartEditorDemoTarget.new()
 var cached_summary: String = ""
 
+## Introducing Smart Editor Plugin for Godot!!!
 
 func demo_start_here() -> String:
 	# Start the recording here so the demo has a clear first frame.
@@ -21,7 +22,7 @@ func demo_expand_selection() -> Dictionary:
 		"label": target.build_round_label("expand", SHARED_ROUND_LIMIT + 1),
 		"scores": [
 			target.score_round(1),
-			target.score_round(LOCAL_ROUND_LIMIT),
+			target.score_round(LOCAL_ROUND_LIMIT_RENAMED),
 			target.score_round(SHARED_ROUND_LIMIT),
 		],
 	}
@@ -30,29 +31,31 @@ func demo_expand_selection() -> Dictionary:
 
 func demo_extract_variable() -> String:
 	# Select the long expression and extract it into a named local variable.
-	return target.build_round_label("extract", (LOCAL_ROUND_LIMIT + SHARED_ROUND_LIMIT) * 2 + target.score_round(1))
+	var round = LOCAL_ROUND_LIMIT_RENAMED + SHARED_ROUND_LIMIT
+	var score_round = (round) * 2 + target.score_round(1)
+	return target.build_round_label("extract", score_round)
 
 
 func demo_inline_variable() -> String:
-	# Put the caret on inline_candidate and inline it into the return statement.
-	var inline_candidate: String = target.build_round_label("inline", LOCAL_ROUND_LIMIT)
-	return "inline result: %s" % inline_candidate
+	# Put the caret on inline_candidate in this declaration and inline it below.
+	return "inline result: %s" % target.build_round_label("inline", LOCAL_ROUND_LIMIT_RENAMED)
 
 
 func demo_rename_local_variable() -> String:
 	# Rename temporary_label and both references in this function should change.
-	var temporary_label: String = target.build_round_label("local", LOCAL_ROUND_LIMIT)
-	cached_summary = temporary_label
-	return temporary_label
+	var round_label: String = target.build_round_label("local", LOCAL_ROUND_LIMIT_RENAMED)
+	cached_summary = round_label
+	# Unfortunately undo doesn't work as expected
+	return round_label
 
 
 func demo_rename_constant() -> int:
-	# Rename LOCAL_ROUND_LIMIT to show a simple constant rename.
-	return LOCAL_ROUND_LIMIT + target.score_round(LOCAL_ROUND_LIMIT)
+	# Rename LOCAL_ROUND_LIMIT_RENAMED to show a simple constant rename.
+	return LOCAL_ROUND_LIMIT_RENAMED + target.score_round(LOCAL_ROUND_LIMIT_RENAMED)
 
 
 func demo_rename_function() -> String:
-	# Rename build_round_label from this call or from its definition.
+	# Rename build_round_label; undo is not grouped into one editor action.
 	return target.build_round_label("method", SHARED_ROUND_LIMIT)
 
 
