@@ -3,12 +3,28 @@ extends Node
 
 const LspClient := preload("res://addons/smart-editor-plugin/common/lsp_client.gd")
 const SETTINGS_PREFIX := &"plugin/smart_editor/"
-const SETTING_ENABLED := SETTINGS_PREFIX + &"call_hierarchy_enabled"
-const SETTING_TREE_FONT_SIZE := SETTINGS_PREFIX + &"call_hierarchy_tree_font_size"
-const SETTING_MAX_NODES := SETTINGS_PREFIX + &"call_hierarchy_max_nodes"
-const SETTING_DEBUG_LOGS := SETTINGS_PREFIX + &"debug_logs"
-const SETTING_SHOW_SHORTCUT := SETTINGS_PREFIX + &"show_call_hierarchy"
-const SETTING_GO_TO_SHORTCUT := SETTINGS_PREFIX + &"call_hierarchy_go_to_selected_method"
+const SETTING_CALL_HIERARCHY_PREFIX := SETTINGS_PREFIX + &"call_hierarchy/"
+const STANDALONE_SETTINGS_PREFIX := &"plugin/call_hierarchy/"
+const SETTING_ENABLED := SETTING_CALL_HIERARCHY_PREFIX + &"enabled"
+const SETTING_TREE_FONT_SIZE := SETTING_CALL_HIERARCHY_PREFIX + &"tree_font_size"
+const SETTING_MAX_NODES := SETTING_CALL_HIERARCHY_PREFIX + &"max_nodes"
+const SETTING_SHOW_SHORTCUT := SETTING_CALL_HIERARCHY_PREFIX + &"show_call_hierarchy"
+const SETTING_GO_TO_SHORTCUT := SETTING_CALL_HIERARCHY_PREFIX + &"go_to_selected_method"
+const LEGACY_SETTING_ENABLED := SETTINGS_PREFIX + &"call_hierarchy_enabled"
+const LEGACY_SETTING_TREE_FONT_SIZE := SETTINGS_PREFIX + &"call_hierarchy_tree_font_size"
+const LEGACY_SETTING_MAX_NODES := SETTINGS_PREFIX + &"call_hierarchy_max_nodes"
+const LEGACY_SETTING_SHOW_SHORTCUT := SETTINGS_PREFIX + &"show_call_hierarchy"
+const LEGACY_SETTING_GO_TO_SHORTCUT := SETTINGS_PREFIX + &"call_hierarchy_go_to_selected_method"
+const STANDALONE_SETTING_ENABLED := STANDALONE_SETTINGS_PREFIX + &"enabled"
+const STANDALONE_SETTING_TREE_FONT_SIZE := STANDALONE_SETTINGS_PREFIX + &"tree_font_size"
+const STANDALONE_SETTING_MAX_NODES := STANDALONE_SETTINGS_PREFIX + &"max_nodes"
+const STANDALONE_SETTING_SHOW_SHORTCUT := STANDALONE_SETTINGS_PREFIX + &"show_call_hierarchy"
+const STANDALONE_SETTING_GO_TO_SHORTCUT := STANDALONE_SETTINGS_PREFIX + &"go_to_selected_method"
+const STANDALONE_SETTING_DEBUG_LOGS := STANDALONE_SETTINGS_PREFIX + &"debug_logs"
+const STANDALONE_SETTING_DEBUG_LOGS_ENABLED := STANDALONE_SETTINGS_PREFIX + &"debug_logs_enabled"
+const STANDALONE_SETTING_DIAGNOSTICS_DEBUG_LOGS := STANDALONE_SETTINGS_PREFIX + &"diagnostics/debug_logs_enabled"
+const REMOVED_SETTING_DEBUG_LOGS := SETTINGS_PREFIX + &"debug_logs"
+const REMOVED_SETTING_DIAGNOSTICS_DEBUG_LOGS := SETTINGS_PREFIX + &"diagnostics/debug_logs_enabled"
 const DEFAULT_TREE_FONT_SIZE := 28
 const HOST := "127.0.0.1"
 const PORT := 6005
@@ -67,7 +83,7 @@ var _plugin: EditorPlugin
 
 func configure(plugin: EditorPlugin) -> void:
 	_plugin = plugin
-	_lsp.configure("Call Hierarchy", HOST, PORT, {}, _debug)
+	_lsp.configure("Call Hierarchy", HOST, PORT)
 
 
 func _enter_tree() -> void:
@@ -115,18 +131,51 @@ func _is_call_hierarchy_shortcut(event: InputEvent) -> bool:
 
 
 func _init_settings() -> void:
-	_init_setting(SETTING_ENABLED, true, TYPE_BOOL)
-	_init_setting(SETTING_TREE_FONT_SIZE, DEFAULT_TREE_FONT_SIZE, TYPE_INT, PROPERTY_HINT_RANGE, "8,48,1")
-	_init_setting(SETTING_MAX_NODES, 250, TYPE_INT, PROPERTY_HINT_RANGE, "25,2000,25")
-	_init_setting(SETTING_DEBUG_LOGS, false, TYPE_BOOL)
-	_init_shortcut_setting(SETTING_SHOW_SHORTCUT, _make_shortcut(KEY_H, false, true, true))
-	_init_shortcut_setting(SETTING_GO_TO_SHORTCUT, _make_shortcut(KEY_F4, false, false))
+	_init_setting_from_legacy_paths(SETTING_ENABLED, true, TYPE_BOOL, PROPERTY_HINT_NONE, "", [
+		LEGACY_SETTING_ENABLED,
+		STANDALONE_SETTING_ENABLED,
+	])
+	_init_setting_from_legacy_paths(SETTING_TREE_FONT_SIZE, DEFAULT_TREE_FONT_SIZE, TYPE_INT, PROPERTY_HINT_RANGE, "8,48,1", [
+		LEGACY_SETTING_TREE_FONT_SIZE,
+		STANDALONE_SETTING_TREE_FONT_SIZE,
+	])
+	_init_setting_from_legacy_paths(SETTING_MAX_NODES, 250, TYPE_INT, PROPERTY_HINT_RANGE, "25,2000,25", [
+		LEGACY_SETTING_MAX_NODES,
+		STANDALONE_SETTING_MAX_NODES,
+	])
+	_init_shortcut_setting_from_legacy_paths(SETTING_SHOW_SHORTCUT, _make_shortcut(KEY_H, false, true, true), [
+		LEGACY_SETTING_SHOW_SHORTCUT,
+		STANDALONE_SETTING_SHOW_SHORTCUT,
+	])
+	_init_shortcut_setting_from_legacy_paths(SETTING_GO_TO_SHORTCUT, _make_shortcut(KEY_F4, false, false), [
+		LEGACY_SETTING_GO_TO_SHORTCUT,
+		STANDALONE_SETTING_GO_TO_SHORTCUT,
+	])
+	_erase_removed_settings([
+		REMOVED_SETTING_DEBUG_LOGS,
+		REMOVED_SETTING_DIAGNOSTICS_DEBUG_LOGS,
+		STANDALONE_SETTING_DEBUG_LOGS,
+		STANDALONE_SETTING_DEBUG_LOGS_ENABLED,
+		STANDALONE_SETTING_DIAGNOSTICS_DEBUG_LOGS,
+	])
 
 
-func _init_setting(path: StringName, default_value: Variant, type: int, hint: int = PROPERTY_HINT_NONE, hint_string: String = "") -> void:
+func _init_setting(path: StringName, default_value: Variant, type: int, hint: int = PROPERTY_HINT_NONE, hint_string: String = "", legacy_path: StringName = &"") -> void:
+	var legacy_paths: Array = []
+	if legacy_path != &"":
+		legacy_paths.append(legacy_path)
+	_init_setting_from_legacy_paths(path, default_value, type, hint, hint_string, legacy_paths)
+
+
+func _init_setting_from_legacy_paths(path: StringName, default_value: Variant, type: int, hint: int = PROPERTY_HINT_NONE, hint_string: String = "", legacy_paths: Array = []) -> void:
 	var settings := EditorInterface.get_editor_settings()
 	if not settings.has_setting(path):
-		settings.set_setting(path, default_value)
+		var value := default_value
+		for legacy_path in legacy_paths:
+			if settings.has_setting(legacy_path):
+				value = settings.get_setting(legacy_path)
+				break
+		settings.set_setting(path, value)
 	settings.set_initial_value(path, default_value, false)
 	settings.add_property_info({
 		"name": path,
@@ -134,12 +183,26 @@ func _init_setting(path: StringName, default_value: Variant, type: int, hint: in
 		"hint": hint,
 		"hint_string": hint_string,
 	})
+	for legacy_path in legacy_paths:
+		_erase_legacy_setting(path, legacy_path)
 
 
-func _init_shortcut_setting(path: StringName, default_shortcut: Shortcut) -> void:
+func _init_shortcut_setting(path: StringName, default_shortcut: Shortcut, legacy_path: StringName = &"") -> void:
+	var legacy_paths: Array = []
+	if legacy_path != &"":
+		legacy_paths.append(legacy_path)
+	_init_shortcut_setting_from_legacy_paths(path, default_shortcut, legacy_paths)
+
+
+func _init_shortcut_setting_from_legacy_paths(path: StringName, default_shortcut: Shortcut, legacy_paths: Array = []) -> void:
 	var settings := EditorInterface.get_editor_settings()
 	if not settings.has_setting(path):
-		settings.set_setting(path, default_shortcut)
+		var shortcut: Variant = default_shortcut
+		for legacy_path in legacy_paths:
+			if settings.has_setting(legacy_path):
+				shortcut = settings.get_setting(legacy_path)
+				break
+		settings.set_setting(path, shortcut)
 	settings.set_initial_value(path, default_shortcut, false)
 	settings.add_property_info({
 		"name": path,
@@ -147,6 +210,26 @@ func _init_shortcut_setting(path: StringName, default_shortcut: Shortcut) -> voi
 		"hint": PROPERTY_HINT_RESOURCE_TYPE,
 		"hint_string": "Shortcut",
 	})
+	for legacy_path in legacy_paths:
+		_erase_legacy_setting(path, legacy_path)
+
+
+func _erase_legacy_setting(path: StringName, legacy_path: StringName) -> void:
+	if legacy_path == &"" or legacy_path == path:
+		return
+
+	_erase_setting(legacy_path)
+
+
+func _erase_removed_settings(paths: Array) -> void:
+	for path in paths:
+		_erase_setting(path)
+
+
+func _erase_setting(path: StringName) -> void:
+	var settings := EditorInterface.get_editor_settings()
+	if settings.has_setting(path):
+		settings.erase(path)
 
 
 func _get_plugin_setting(path: StringName, default_value: Variant) -> Variant:
@@ -162,10 +245,6 @@ func _tree_font_size() -> int:
 
 func _max_nodes() -> int:
 	return int(_get_plugin_setting(SETTING_MAX_NODES, 250))
-
-
-func _debug_logs_enabled() -> bool:
-	return bool(_get_plugin_setting(SETTING_DEBUG_LOGS, false))
 
 
 func _call_hierarchy_enabled() -> bool:
@@ -537,7 +616,6 @@ func _try_send_queued_requests() -> void:
 				"includeDeclaration": true,
 			},
 		}, context)
-		_debug("sent references request for '%s'." % request["name"])
 
 
 func _send_document_sync_notification(uri: String) -> void:
@@ -1336,8 +1414,3 @@ func _is_identifier_start_char(ch: String) -> bool:
 
 func _is_identifier_char(ch: String) -> bool:
 	return IDENTIFIER_CHARS.contains(ch)
-
-
-func _debug(message: String) -> void:
-	if _debug_logs_enabled():
-		print("Call Hierarchy: " + message)

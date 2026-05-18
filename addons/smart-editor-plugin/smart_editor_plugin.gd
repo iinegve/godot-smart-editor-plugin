@@ -18,6 +18,8 @@ func _enter_tree() -> void:
 	_call_hierarchy_controller.configure(self)
 	add_child(_call_hierarchy_controller)
 
+	_smart_editor_controller.initialize_after_call_hierarchy_settings()
+
 
 func _exit_tree() -> void:
 	if _call_hierarchy_controller != null:

@@ -7,8 +7,8 @@ Smart Editor is a Godot editor plugin that adds small IDE-style conveniences to 
 ## Features
 
 - Smart expand/shrink selection for GDScript expressions, statements, blocks, function bodies, comments, multiline calls, arrays, dictionaries, and function signatures.
-- Symbol Usage Stripe, a narrow mark strip beside the script editor scrollbar showing usages of the symbol under the caret in the current file.
-- Symbol usage highlights in the visible editor area for the symbol under the caret.
+- Highlights stripe, a narrow mark strip beside the script editor scrollbar showing usages of the symbol under the caret in the current file.
+- Highlights in the visible editor area for the symbol under the caret.
 - Function boundary guides that draw subtle horizontal lines between functions to make indentation-based code easier to scan.
 - Call Hierarchy, a lazy dockable view that shows callers of the function under the caret.
 - Extract Local Variable for selected expressions.
@@ -17,33 +17,51 @@ Smart Editor is a Godot editor plugin that adds small IDE-style conveniences to 
 
 ## Default Shortcuts
 
-All shortcuts can be changed in `Editor Settings` under `Plugin` -> `Smart Editor`.
+Configurable shortcuts can be changed in `Editor Settings` under `Plugin` -> `Smart Editor`.
+
+### Editor Commands
 
 - `Expand Selection`: `Meta+D` (`Command+D` on macOS)
 - `Shrink Selection`: `Meta+Shift+D` (`Command+Shift+D` on macOS)
 - `Extract Local Variable`: `Meta+Ctrl+V` (`Command+Control+V` on macOS)
 - `Rename Symbol`: `Meta+Ctrl+R` (`Command+Control+R` on macOS)
 - `Inline Variable`: `Meta+Ctrl+N` (`Command+Control+N` on macOS)
-- `Show Call Hierarchy`: `Ctrl+Alt+H`
-- `Go to Selected Call Hierarchy Method`: `F4`
 
-The Symbol Usage Stripe, symbol highlights, and function boundary guides update automatically while editing and can be configured in Editor Settings.
+### Call Hierarchy
+
+- `Show Call Hierarchy`: `Ctrl+Alt+H`
+- `Select Call Site`: arrow keys
+- `Go to Selected Call Hierarchy Method`: `F4` or double-click
+- `Return Focus to Script Editor`: `Esc`
+
+The highlights stripe, visible highlights, and function boundary guides update automatically while editing and can be configured in Editor Settings.
 
 ## Editor Settings
 
 Settings are available in `Editor Settings` under `Plugin` -> `Smart Editor`.
 
-- `Symbol Usage Stripe Enabled`: show or hide the right-side symbol usage stripe.
-- `Symbol Usage Highlight Color`: background color for symbol usages.
-- `Symbol Usage Current Highlight Color`: background color for the current usage.
-- `Symbol Usage Current Outline Color`: outline color for the current usage.
-- `Function Boundary Guides Enabled`: show or hide function boundary guides.
-- `Function Boundary Guide Color`: color for function boundary guide lines.
-- `Call Hierarchy Enabled`: enable or disable the call hierarchy shortcut and dock.
-- `Call Hierarchy Tree Font Size`: font size used in the call hierarchy tree.
-- `Call Hierarchy Max Nodes`: maximum number of hierarchy nodes to load.
+### Editor
+
 - `Dialog Width`: width used by Smart Editor dialogs.
-- `Debug Logs`: print extra diagnostic messages to the output.
+
+### Highlights
+
+- `Stripe Highlights Enabled`: show or hide the right-side highlights stripe.
+- `In-Editor Highlights Enabled`: show or hide visible usage highlights.
+- `Highlight Color`: background color for highlighted usages.
+- `Current Highlight Color`: background color for the current usage.
+- `Current Outline Color`: outline color for the current usage.
+
+### Call Hierarchy
+
+- `Enabled`: enable or disable the call hierarchy shortcut and dock.
+- `Tree Font Size`: font size used in the call hierarchy tree.
+- `Max Nodes`: maximum number of hierarchy nodes to load.
+
+### Function Boundary Guides
+
+- `Enabled`: show or hide function boundary guides.
+- `Guide Color`: color for function boundary guide lines.
 
 ## Installation
 
@@ -69,7 +87,7 @@ Smart Editor does not try to be a full semantic refactoring engine. Its refactor
 - `Call Hierarchy` depends on Godot's code analysis service and groups callers by the enclosing function found in GDScript source text.
 - `Extract Local Variable` and `Inline Variable` operate on recognized GDScript text patterns. They do not perform complete semantic analysis.
 - Smart selection is based on a custom parser for practical editor selection ranges, not Godot's compiler AST. Some unusual syntax can still need more test cases.
-- Symbol usage stripe and highlights are focused on the currently open script, not a project-wide usage view.
+- Highlights are focused on the currently open script, not a project-wide usage view.
 
 ## Development
 

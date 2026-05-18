@@ -16,7 +16,7 @@ var _current_reference := {}
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	custom_minimum_size = Vector2(STRIPE_WIDTH, 0)
-	tooltip_text = "Symbol Usage Stripe"
+	tooltip_text = "Highlights Stripe"
 
 
 func set_usage_references(references: Array[Dictionary], line_count: int, current_reference: Dictionary) -> void:

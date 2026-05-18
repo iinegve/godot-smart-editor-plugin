@@ -12,22 +12,52 @@ const SmartSymbolUsageController := preload("res://addons/smart-editor-plugin/sm
 const SymbolUsageModel := preload("res://addons/smart-editor-plugin/smart_editor/smart_symbol_usage_model.gd")
 const LspClient := preload("res://addons/smart-editor-plugin/common/lsp_client.gd")
 const SETTINGS_PREFIX := &"plugin/smart_editor/"
-const SETTING_DIALOG_WIDTH := SETTINGS_PREFIX + &"dialog_width"
-const SETTING_DEBUG_LOGS := SETTINGS_PREFIX + &"debug_logs"
-const SETTING_RENAME_LSP_PROBE_ONLY := SETTINGS_PREFIX + &"rename_lsp_probe_only"
-const SETTING_SYMBOL_USAGE_STRIPE_ENABLED := SETTINGS_PREFIX + &"symbol_usage_stripe_enabled"
-const SETTING_SYMBOL_USAGE_HIGHLIGHT_ENABLED := SETTINGS_PREFIX + &"symbol_usage_highlight_enabled"
-const SETTING_SYMBOL_USAGE_LSP_ENABLED := SETTINGS_PREFIX + &"symbol_usage_lsp_enabled"
-const SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR := SETTINGS_PREFIX + &"symbol_usage_highlight_color"
-const SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR := SETTINGS_PREFIX + &"symbol_usage_current_highlight_color"
-const SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR := SETTINGS_PREFIX + &"symbol_usage_current_outline_color"
-const SETTING_FUNCTION_BOUNDARY_GUIDES_ENABLED := SETTINGS_PREFIX + &"function_boundary_guides_enabled"
-const SETTING_FUNCTION_BOUNDARY_GUIDE_COLOR := SETTINGS_PREFIX + &"function_boundary_guide_color"
-const SETTING_EXPAND_SHORTCUT := SETTINGS_PREFIX + &"expand_selection"
-const SETTING_SHRINK_SHORTCUT := SETTINGS_PREFIX + &"shrink_selection"
-const SETTING_EXTRACT_SHORTCUT := SETTINGS_PREFIX + &"extract_local_variable"
-const SETTING_RENAME_SHORTCUT := SETTINGS_PREFIX + &"rename_symbol"
-const SETTING_INLINE_SHORTCUT := SETTINGS_PREFIX + &"inline_variable"
+const SETTING_EDITOR_PREFIX := SETTINGS_PREFIX + &"editor/"
+const SETTING_HIGHLIGHTS_PREFIX := SETTINGS_PREFIX + &"highlights/"
+const SETTING_FUNCTION_BOUNDARY_PREFIX := SETTINGS_PREFIX + &"function_boundary_guides/"
+const SETTING_DIALOG_WIDTH := SETTING_EDITOR_PREFIX + &"dialog_width"
+const SETTING_EXPAND_SHORTCUT := SETTING_EDITOR_PREFIX + &"expand_selection"
+const SETTING_SHRINK_SHORTCUT := SETTING_EDITOR_PREFIX + &"shrink_selection"
+const SETTING_EXTRACT_SHORTCUT := SETTING_EDITOR_PREFIX + &"extract_local_variable"
+const SETTING_RENAME_SHORTCUT := SETTING_EDITOR_PREFIX + &"rename_symbol"
+const SETTING_INLINE_SHORTCUT := SETTING_EDITOR_PREFIX + &"inline_variable"
+const SETTING_SYMBOL_USAGE_STRIPE_ENABLED := SETTING_HIGHLIGHTS_PREFIX + &"stripe_highlights_enabled"
+const SETTING_SYMBOL_USAGE_HIGHLIGHT_ENABLED := SETTING_HIGHLIGHTS_PREFIX + &"in-editor_highlights_enabled"
+const SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR := SETTING_HIGHLIGHTS_PREFIX + &"highlight_color"
+const SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR := SETTING_HIGHLIGHTS_PREFIX + &"current_highlight_color"
+const SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR := SETTING_HIGHLIGHTS_PREFIX + &"current_outline_color"
+const SETTING_FUNCTION_BOUNDARY_GUIDES_ENABLED := SETTING_FUNCTION_BOUNDARY_PREFIX + &"show_guides"
+const SETTING_FUNCTION_BOUNDARY_GUIDE_COLOR := SETTING_FUNCTION_BOUNDARY_PREFIX + &"guide_color"
+const LEGACY_SETTING_DIALOG_WIDTH := SETTINGS_PREFIX + &"dialog_width"
+const LEGACY_SETTING_SYMBOL_USAGE_STRIPE_ENABLED := SETTINGS_PREFIX + &"symbol_usage_stripe_enabled"
+const LEGACY_SETTING_SYMBOL_USAGE_HIGHLIGHT_ENABLED := SETTINGS_PREFIX + &"symbol_usage_highlight_enabled"
+const LEGACY_SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR := SETTINGS_PREFIX + &"symbol_usage_highlight_color"
+const LEGACY_SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR := SETTINGS_PREFIX + &"symbol_usage_current_highlight_color"
+const LEGACY_SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR := SETTINGS_PREFIX + &"symbol_usage_current_outline_color"
+const PREVIOUS_SETTING_SYMBOL_USAGE_STRIPE_ENABLED := SETTINGS_PREFIX + &"symbol_usage/stripe_enabled"
+const PREVIOUS_SETTING_SYMBOL_USAGE_HIGHLIGHT_ENABLED := SETTINGS_PREFIX + &"symbol_usage/highlights_enabled"
+const PREVIOUS_SETTING_HIGHLIGHTS_STRIPE_ENABLED := SETTINGS_PREFIX + &"highlights/stripe_enabled"
+const PREVIOUS_SETTING_HIGHLIGHTS_ENABLED := SETTINGS_PREFIX + &"highlights/enabled"
+const PREVIOUS_SETTING_HIGHLIGHTS_HIGHLIGHT_ENABLED := SETTINGS_PREFIX + &"highlights/highlights_enabled"
+const PREVIOUS_SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR := SETTINGS_PREFIX + &"symbol_usage/highlight_color"
+const PREVIOUS_SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR := SETTINGS_PREFIX + &"symbol_usage/current_highlight_color"
+const PREVIOUS_SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR := SETTINGS_PREFIX + &"symbol_usage/current_outline_color"
+const LEGACY_SETTING_FUNCTION_BOUNDARY_GUIDES_ENABLED := SETTINGS_PREFIX + &"function_boundary_guides_enabled"
+const LEGACY_SETTING_FUNCTION_BOUNDARY_GUIDE_COLOR := SETTINGS_PREFIX + &"function_boundary_guide_color"
+const LEGACY_SETTING_EXPAND_SHORTCUT := SETTINGS_PREFIX + &"expand_selection"
+const LEGACY_SETTING_SHRINK_SHORTCUT := SETTINGS_PREFIX + &"shrink_selection"
+const LEGACY_SETTING_EXTRACT_SHORTCUT := SETTINGS_PREFIX + &"extract_local_variable"
+const LEGACY_SETTING_RENAME_SHORTCUT := SETTINGS_PREFIX + &"rename_symbol"
+const LEGACY_SETTING_INLINE_SHORTCUT := SETTINGS_PREFIX + &"inline_variable"
+const REMOVED_SETTING_DEBUG_LOGS := SETTINGS_PREFIX + &"debug_logs"
+const REMOVED_SETTING_DIAGNOSTICS_DEBUG_LOGS := SETTINGS_PREFIX + &"diagnostics/debug_logs_enabled"
+const REMOVED_SETTING_RENAME_LSP_PROBE_ONLY := SETTINGS_PREFIX + &"rename_lsp_probe_only"
+const REMOVED_SETTING_DIAGNOSTICS_RENAME_PROBE_ONLY := SETTINGS_PREFIX + &"diagnostics/rename_probe_only"
+const REMOVED_SETTING_SYMBOL_USAGE_LSP_ENABLED := SETTINGS_PREFIX + &"symbol_usage_lsp_enabled"
+const REMOVED_SETTING_SYMBOL_USAGE_LSP_ENABLED_GROUPED := SETTINGS_PREFIX + &"symbol_usage/use_code_analysis_service"
+const REMOVED_SETTING_EXTRACT_METHOD := SETTINGS_PREFIX + &"extract_method"
+const REMOVED_SETTING_SYMBOL_USAGE_PROFILE_LOGS := SETTINGS_PREFIX + &"symbol_usage_profile_logs"
+const REMOVED_SETTING_RENAME_PROFILE_LOGS := SETTINGS_PREFIX + &"rename_profile_logs"
 const HOST := "127.0.0.1"
 const PORT := 6005
 const IDENTIFIER_CHARS := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
@@ -72,11 +102,15 @@ func _enter_tree() -> void:
 	_configure_lsp_clients()
 	_create_extract_dialog()
 	_create_rename_dialog()
-	_create_function_boundary_guides_controller()
 	_create_symbol_usage_controller()
 	_rename_prewarm_pending = true
 	set_process_shortcut_input(true)
 	set_process(true)
+
+
+func initialize_after_call_hierarchy_settings() -> void:
+	_init_function_boundary_settings()
+	_create_function_boundary_guides_controller()
 
 
 func _configure_lsp_clients() -> void:
@@ -90,8 +124,8 @@ func _configure_lsp_clients() -> void:
 				"prepareSupport": true,
 			},
 		},
-	}, _debug_rename)
-	_inline_lsp.configure("Inline Variable", HOST, PORT, {}, _debug_inline)
+	})
+	_inline_lsp.configure("Inline Variable", HOST, PORT)
 
 
 func _exit_tree() -> void:
@@ -147,28 +181,69 @@ func _shortcut_input(event: InputEvent) -> void:
 
 
 func _init_settings() -> void:
-	_init_setting(SETTING_DIALOG_WIDTH, 420, TYPE_INT, PROPERTY_HINT_RANGE, "300,900,10")
-	_init_setting(SETTING_DEBUG_LOGS, false, TYPE_BOOL)
-	_init_setting(SETTING_RENAME_LSP_PROBE_ONLY, false, TYPE_BOOL)
-	_init_setting(SETTING_SYMBOL_USAGE_STRIPE_ENABLED, false, TYPE_BOOL)
-	_init_setting(SETTING_SYMBOL_USAGE_HIGHLIGHT_ENABLED, false, TYPE_BOOL)
-	_init_setting(SETTING_SYMBOL_USAGE_LSP_ENABLED, false, TYPE_BOOL)
-	_init_setting(SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR, SmartSymbolUsageHighlight.DEFAULT_HIGHLIGHT_COLOR, TYPE_COLOR)
-	_init_setting(SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR, SmartSymbolUsageHighlight.DEFAULT_CURRENT_HIGHLIGHT_COLOR, TYPE_COLOR)
-	_init_setting(SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR, SmartSymbolUsageHighlight.DEFAULT_CURRENT_OUTLINE_COLOR, TYPE_COLOR)
-	_init_setting(SETTING_FUNCTION_BOUNDARY_GUIDES_ENABLED, true, TYPE_BOOL)
-	_init_setting(SETTING_FUNCTION_BOUNDARY_GUIDE_COLOR, SmartFunctionBoundaryGuides.DEFAULT_GUIDE_COLOR, TYPE_COLOR)
-	_init_shortcut_setting(SETTING_EXPAND_SHORTCUT, _make_shortcut(KEY_D, true, false))
-	_init_shortcut_setting(SETTING_SHRINK_SHORTCUT, _make_shortcut(KEY_D, true, false, false, true))
-	_init_shortcut_setting(SETTING_EXTRACT_SHORTCUT, _make_shortcut(KEY_V, true, true))
-	_init_shortcut_setting(SETTING_RENAME_SHORTCUT, _make_shortcut(KEY_R, true, true))
-	_init_shortcut_setting(SETTING_INLINE_SHORTCUT, _make_shortcut(KEY_N, true, true))
+	_init_setting(SETTING_DIALOG_WIDTH, 420, TYPE_INT, PROPERTY_HINT_RANGE, "300,900,10", LEGACY_SETTING_DIALOG_WIDTH)
+	_init_shortcut_setting(SETTING_EXPAND_SHORTCUT, _make_shortcut(KEY_D, true, false), LEGACY_SETTING_EXPAND_SHORTCUT)
+	_init_shortcut_setting(SETTING_SHRINK_SHORTCUT, _make_shortcut(KEY_D, true, false, false, true), LEGACY_SETTING_SHRINK_SHORTCUT)
+	_init_shortcut_setting(SETTING_EXTRACT_SHORTCUT, _make_shortcut(KEY_V, true, true), LEGACY_SETTING_EXTRACT_SHORTCUT)
+	_init_shortcut_setting(SETTING_RENAME_SHORTCUT, _make_shortcut(KEY_R, true, true), LEGACY_SETTING_RENAME_SHORTCUT)
+	_init_shortcut_setting(SETTING_INLINE_SHORTCUT, _make_shortcut(KEY_N, true, true), LEGACY_SETTING_INLINE_SHORTCUT)
+	_init_setting_from_legacy_paths(SETTING_SYMBOL_USAGE_STRIPE_ENABLED, false, TYPE_BOOL, PROPERTY_HINT_NONE, "", [
+		LEGACY_SETTING_SYMBOL_USAGE_STRIPE_ENABLED,
+		PREVIOUS_SETTING_SYMBOL_USAGE_STRIPE_ENABLED,
+		PREVIOUS_SETTING_HIGHLIGHTS_STRIPE_ENABLED,
+	])
+	_init_setting_from_legacy_paths(SETTING_SYMBOL_USAGE_HIGHLIGHT_ENABLED, false, TYPE_BOOL, PROPERTY_HINT_NONE, "", [
+		LEGACY_SETTING_SYMBOL_USAGE_HIGHLIGHT_ENABLED,
+		PREVIOUS_SETTING_SYMBOL_USAGE_HIGHLIGHT_ENABLED,
+		PREVIOUS_SETTING_HIGHLIGHTS_ENABLED,
+		PREVIOUS_SETTING_HIGHLIGHTS_HIGHLIGHT_ENABLED,
+	])
+	_init_setting_from_legacy_paths(SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR, SmartSymbolUsageHighlight.DEFAULT_HIGHLIGHT_COLOR, TYPE_COLOR, PROPERTY_HINT_NONE, "", [
+		LEGACY_SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR,
+		PREVIOUS_SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR,
+	])
+	_init_setting_from_legacy_paths(SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR, SmartSymbolUsageHighlight.DEFAULT_CURRENT_HIGHLIGHT_COLOR, TYPE_COLOR, PROPERTY_HINT_NONE, "", [
+		LEGACY_SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR,
+		PREVIOUS_SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR,
+	])
+	_init_setting_from_legacy_paths(SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR, SmartSymbolUsageHighlight.DEFAULT_CURRENT_OUTLINE_COLOR, TYPE_COLOR, PROPERTY_HINT_NONE, "", [
+		LEGACY_SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR,
+		PREVIOUS_SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR,
+	])
+	_erase_removed_settings([
+		REMOVED_SETTING_DEBUG_LOGS,
+		REMOVED_SETTING_DIAGNOSTICS_DEBUG_LOGS,
+		REMOVED_SETTING_RENAME_LSP_PROBE_ONLY,
+		REMOVED_SETTING_DIAGNOSTICS_RENAME_PROBE_ONLY,
+		REMOVED_SETTING_SYMBOL_USAGE_LSP_ENABLED,
+		REMOVED_SETTING_SYMBOL_USAGE_LSP_ENABLED_GROUPED,
+		REMOVED_SETTING_EXTRACT_METHOD,
+		REMOVED_SETTING_SYMBOL_USAGE_PROFILE_LOGS,
+		REMOVED_SETTING_RENAME_PROFILE_LOGS,
+	])
 
 
-func _init_setting(path: StringName, default_value: Variant, type: int, hint: int = PROPERTY_HINT_NONE, hint_string: String = "") -> void:
+func _init_function_boundary_settings() -> void:
+	_init_setting(SETTING_FUNCTION_BOUNDARY_GUIDES_ENABLED, true, TYPE_BOOL, PROPERTY_HINT_NONE, "", LEGACY_SETTING_FUNCTION_BOUNDARY_GUIDES_ENABLED)
+	_init_setting(SETTING_FUNCTION_BOUNDARY_GUIDE_COLOR, SmartFunctionBoundaryGuides.DEFAULT_GUIDE_COLOR, TYPE_COLOR, PROPERTY_HINT_NONE, "", LEGACY_SETTING_FUNCTION_BOUNDARY_GUIDE_COLOR)
+
+
+func _init_setting(path: StringName, default_value: Variant, type: int, hint: int = PROPERTY_HINT_NONE, hint_string: String = "", legacy_path: StringName = &"") -> void:
+	var legacy_paths: Array = []
+	if legacy_path != &"":
+		legacy_paths.append(legacy_path)
+	_init_setting_from_legacy_paths(path, default_value, type, hint, hint_string, legacy_paths)
+
+
+func _init_setting_from_legacy_paths(path: StringName, default_value: Variant, type: int, hint: int = PROPERTY_HINT_NONE, hint_string: String = "", legacy_paths: Array = []) -> void:
 	var settings := EditorInterface.get_editor_settings()
 	if not settings.has_setting(path):
-		settings.set_setting(path, default_value)
+		var value := default_value
+		for legacy_path in legacy_paths:
+			if settings.has_setting(legacy_path):
+				value = settings.get_setting(legacy_path)
+				break
+		settings.set_setting(path, value)
 	settings.set_initial_value(path, default_value, false)
 	settings.add_property_info({
 		"name": path,
@@ -176,12 +251,17 @@ func _init_setting(path: StringName, default_value: Variant, type: int, hint: in
 		"hint": hint,
 		"hint_string": hint_string,
 	})
+	for legacy_path in legacy_paths:
+		_erase_legacy_setting(path, legacy_path)
 
 
-func _init_shortcut_setting(path: StringName, default_shortcut: Shortcut) -> void:
+func _init_shortcut_setting(path: StringName, default_shortcut: Shortcut, legacy_path: StringName = &"") -> void:
 	var settings := EditorInterface.get_editor_settings()
 	if not settings.has_setting(path):
-		settings.set_setting(path, default_shortcut)
+		var shortcut: Variant = default_shortcut
+		if legacy_path != &"" and settings.has_setting(legacy_path):
+			shortcut = settings.get_setting(legacy_path)
+		settings.set_setting(path, shortcut)
 	settings.set_initial_value(path, default_shortcut, false)
 	settings.add_property_info({
 		"name": path,
@@ -189,6 +269,25 @@ func _init_shortcut_setting(path: StringName, default_shortcut: Shortcut) -> voi
 		"hint": PROPERTY_HINT_RESOURCE_TYPE,
 		"hint_string": "Shortcut",
 	})
+	_erase_legacy_setting(path, legacy_path)
+
+
+func _erase_legacy_setting(path: StringName, legacy_path: StringName) -> void:
+	if legacy_path == &"" or legacy_path == path:
+		return
+
+	_erase_setting(legacy_path)
+
+
+func _erase_removed_settings(paths: Array) -> void:
+	for path in paths:
+		_erase_setting(path)
+
+
+func _erase_setting(path: StringName) -> void:
+	var settings := EditorInterface.get_editor_settings()
+	if settings.has_setting(path):
+		settings.erase(path)
 
 
 func _get_plugin_setting(path: StringName, default_value: Variant) -> Variant:
@@ -200,18 +299,6 @@ func _get_plugin_setting(path: StringName, default_value: Variant) -> Variant:
 
 func _dialog_width() -> int:
 	return int(_get_plugin_setting(SETTING_DIALOG_WIDTH, 420))
-
-
-func _debug_logs_enabled() -> bool:
-	return bool(_get_plugin_setting(SETTING_DEBUG_LOGS, false))
-
-
-func _rename_lsp_probe_only_enabled() -> bool:
-	return bool(_get_plugin_setting(SETTING_RENAME_LSP_PROBE_ONLY, false))
-
-
-func _rename_probe_logs_enabled() -> bool:
-	return _debug_logs_enabled() or _rename_lsp_probe_only_enabled()
 
 
 func _shortcut_matches(path: StringName, event: InputEvent) -> bool:
@@ -281,14 +368,12 @@ func _create_symbol_usage_controller() -> void:
 	add_child(_symbol_usage_controller)
 	_symbol_usage_controller.configure(
 		SETTING_SYMBOL_USAGE_STRIPE_ENABLED,
-		SETTING_DEBUG_LOGS,
 		HOST,
 		PORT,
 		SETTING_SYMBOL_USAGE_HIGHLIGHT_ENABLED,
 		SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR,
 		SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR,
-		SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR,
-		SETTING_SYMBOL_USAGE_LSP_ENABLED
+		SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR
 	)
 
 
@@ -482,7 +567,6 @@ func _begin_rename() -> void:
 	_rename_symbol = symbol_range["symbol"]
 	_rename_symbol_line = symbol_range["line"]
 	_rename_symbol_column = symbol_range["column"]
-	_debug_rename("begin for '%s' at %s:%d:%d." % [_rename_symbol, _rename_script_path, _rename_symbol_line + 1, _rename_symbol_column + 1])
 
 	_rename_prompt_label.text = "Rename '%s' to:" % _rename_symbol
 	_rename_name_edit.text = _rename_symbol
@@ -575,7 +659,6 @@ func _rename_send_prepare_rename_request() -> void:
 			"character": _rename_queued["character"],
 		},
 	})
-	_debug_rename("sent prepareRename request for '%s' at %d:%d." % [_rename_symbol, _rename_queued["line"] + 1, _rename_queued["character"] + 1])
 
 
 func _rename_send_rename_request() -> void:
@@ -589,7 +672,6 @@ func _rename_send_rename_request() -> void:
 		},
 		"newName": _rename_queued["new_name"],
 	})
-	_debug_rename("sent rename request for '%s' -> '%s' in %s." % [_rename_symbol, _rename_queued["new_name"], _rename_queued["uri"]])
 
 
 func _rename_send_open_document_sync_notifications() -> void:
@@ -615,10 +697,7 @@ func _rename_send_open_document_sync_notifications() -> void:
 
 
 func _rename_send_text_document_sync_notification(uri: String, text: String) -> bool:
-	var synced := _rename_lsp.sync_document(uri, text)
-	if synced:
-		_debug_rename("sending didOpen for %s." % uri)
-	return synced
+	return _rename_lsp.sync_document(uri, text)
 
 
 func _rename_handle_response(response: Dictionary) -> void:
@@ -635,15 +714,10 @@ func _rename_handle_response(response: Dictionary) -> void:
 		return
 
 	if request_kind == "prepare_rename":
-		_rename_log_prepare_rename_result(message.get("result", null))
 		_rename_send_rename_request()
 	elif request_kind == "rename":
 		var workspace_edit = message.get("result", {})
-		_rename_log_workspace_edit(workspace_edit)
-		if _rename_lsp_probe_only_enabled():
-			print("Rename Symbol: LSP probe-only mode is enabled; returned edits were not applied.")
-		else:
-			call_deferred("_rename_apply_workspace_edit", workspace_edit, str(_rename_queued.get("new_name", "")))
+		call_deferred("_rename_apply_workspace_edit", workspace_edit, str(_rename_queued.get("new_name", "")))
 	_rename_queued = {}
 
 
@@ -709,8 +783,6 @@ func _rename_apply_workspace_edit(workspace_edit: Variant, new_name: String = ""
 
 	if disk_files_changed:
 		_rename_scan_resource_filesystem_sources()
-
-	_debug_rename("applied %d edit(s) across %d file(s)." % [applied_edits, applied_files])
 
 
 func _rename_open_script_buffers_by_uri() -> Dictionary:
@@ -822,94 +894,6 @@ func _rename_save_open_script_buffer(open_script_buffer: Dictionary) -> bool:
 	return true
 
 
-func _rename_log_prepare_rename_result(result: Variant) -> void:
-	if not _rename_probe_logs_enabled():
-		return
-
-	print("Rename Symbol: prepareRename result: %s" % _rename_debug_preview(result, 2000))
-
-
-func _rename_log_workspace_edit(workspace_edit: Variant) -> void:
-	if not _rename_probe_logs_enabled():
-		return
-
-	var edits_by_uri := _rename_workspace_edit_to_edits_by_uri(workspace_edit)
-	if edits_by_uri.is_empty():
-		print("Rename Symbol: LSP rename returned no edits: %s" % _rename_debug_preview(workspace_edit, 2000))
-		return
-
-	var edit_count := 0
-	for uri in edits_by_uri:
-		edit_count += edits_by_uri[uri].size()
-
-	print("Rename Symbol: LSP rename returned %d edit(s) across %d file(s)." % [edit_count, edits_by_uri.size()])
-	for uri in edits_by_uri:
-		var edits: Array = edits_by_uri[uri]
-		print("Rename Symbol:   %s (%d edit(s))" % [_rename_display_uri(uri), edits.size()])
-		for index in range(edits.size()):
-			print("Rename Symbol:     #%d %s" % [index + 1, _rename_format_text_edit_target(uri, edits[index])])
-
-
-func _rename_format_text_edit_target(uri: String, edit: Variant) -> String:
-	if typeof(edit) != TYPE_DICTIONARY or not edit.has("range"):
-		return _rename_debug_preview(edit, 300)
-
-	var edit_range: Variant = edit["range"]
-	if typeof(edit_range) != TYPE_DICTIONARY:
-		return _rename_debug_preview(edit, 300)
-
-	var start: Dictionary = edit_range.get("start", {})
-	var end: Dictionary = edit_range.get("end", {})
-	var line := int(start.get("line", -1))
-	var column := int(start.get("character", -1))
-	var end_line := int(end.get("line", -1))
-	var end_column := int(end.get("character", -1))
-	var old_text := _rename_get_range_text(uri, line, column, end_line, end_column)
-	var new_text := str(edit.get("newText", ""))
-
-	return "%s:%d:%d-%d:%d %s -> %s" % [
-		_rename_display_uri(uri),
-		line + 1,
-		column + 1,
-		end_line + 1,
-		end_column + 1,
-		_rename_debug_preview(old_text, 120),
-		_rename_debug_preview(new_text, 120),
-	]
-
-
-func _rename_get_range_text(uri: String, from_line: int, from_col: int, to_line: int, to_col: int) -> String:
-	var text := _rename_get_text_for_uri(uri)
-	if text.is_empty():
-		return ""
-
-	var lines := text.split("\n")
-	if from_line < 0 or from_line >= lines.size() or to_line < 0 or to_line >= lines.size():
-		return ""
-
-	if from_line == to_line:
-		return lines[from_line].substr(from_col, max(0, to_col - from_col))
-
-	var parts := []
-	parts.append(lines[from_line].substr(from_col))
-	for line_index in range(from_line + 1, to_line):
-		parts.append(lines[line_index])
-	parts.append(lines[to_line].substr(0, to_col))
-	return "\n".join(parts)
-
-
-func _rename_get_text_for_uri(uri: String) -> String:
-	var current_uri := _path_to_file_uri(ProjectSettings.globalize_path(_rename_script_path))
-	if uri == current_uri and _rename_code != null:
-		return _get_code_text(_rename_code)
-
-	var file := FileAccess.open(_file_uri_to_path(uri), FileAccess.READ)
-	if file == null:
-		return ""
-
-	return file.get_as_text()
-
-
 func _file_uri_to_path(uri: String) -> String:
 	return LspClient.file_uri_to_path(uri)
 
@@ -921,14 +905,6 @@ func _rename_display_uri(uri: String) -> String:
 		return path
 
 	return localized
-
-
-func _rename_debug_preview(value: Variant, max_length: int = 500) -> String:
-	var text := JSON.stringify(value)
-	if text.length() <= max_length:
-		return text
-
-	return text.left(max_length) + "... <truncated>"
 
 
 func _rename_text_signature(text: String) -> String:
@@ -1167,7 +1143,6 @@ func _inline_try_send_references_request() -> void:
 			"includeDeclaration": true,
 		},
 	})
-	_debug_inline("sent references request for '%s'." % _inline_symbol)
 
 
 func _inline_send_document_sync_notification() -> void:
@@ -1209,8 +1184,6 @@ func _inline_apply_from_references(references: Variant) -> void:
 	_inline_code.remove_line_at(_inline_symbol_line)
 	_inline_code.end_complex_operation()
 	_inline_code.deselect()
-
-	_debug_inline("inlined '%s' into %d reference(s)." % [_inline_symbol, edits.size()])
 
 
 func _inline_references_include_reassignment(references: Array) -> bool:
@@ -1493,12 +1466,3 @@ func _ranges_equal(a: Dictionary, b: Dictionary) -> bool:
 
 func _compare_positions(line_a: int, col_a: int, line_b: int, col_b: int) -> int:
 	return SmartSelectionRange.compare_positions(line_a, col_a, line_b, col_b)
-
-func _debug_rename(message: String) -> void:
-	if _rename_probe_logs_enabled():
-		print("Rename Symbol: " + message)
-
-
-func _debug_inline(message: String) -> void:
-	if _debug_logs_enabled():
-		print("Inline Variable: " + message)

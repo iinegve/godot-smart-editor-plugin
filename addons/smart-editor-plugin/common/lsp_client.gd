@@ -258,8 +258,6 @@ func _next_request_id() -> int:
 func _debug(message: String) -> void:
 	if _debug_callback.is_valid():
 		_debug_callback.call(message)
-	else:
-		print("%s: %s" % [_name, message])
 
 
 static func try_extract_lsp_body(buffer: PackedByteArray) -> String:

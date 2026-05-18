@@ -11,12 +11,10 @@ const NAVIGATION_SETTLE_SECONDS := 0.08
 const TEXT_DEBOUNCE_SECONDS := 0.40
 
 var _enabled_setting: StringName = &""
-var _debug_setting: StringName = &""
 var _highlight_enabled_setting: StringName = &""
 var _highlight_color_setting: StringName = &""
 var _current_highlight_color_setting: StringName = &""
 var _current_outline_color_setting: StringName = &""
-var _lsp_enabled_setting: StringName = &""
 var _host := "127.0.0.1"
 var _port := 6005
 var _script_editor = null
@@ -41,31 +39,27 @@ var _queued_request := {}
 
 func configure(
 	enabled_setting: StringName,
-	debug_setting: StringName,
 	host: String,
 	port: int,
 	highlight_enabled_setting: StringName = &"",
 	highlight_color_setting: StringName = &"",
 	current_highlight_color_setting: StringName = &"",
-	current_outline_color_setting: StringName = &"",
-	lsp_enabled_setting: StringName = &""
+	current_outline_color_setting: StringName = &""
 ) -> void:
 	_enabled_setting = enabled_setting
-	_debug_setting = debug_setting
 	_host = host
 	_port = port
 	_highlight_enabled_setting = highlight_enabled_setting
 	_highlight_color_setting = highlight_color_setting
 	_current_highlight_color_setting = current_highlight_color_setting
 	_current_outline_color_setting = current_outline_color_setting
-	_lsp_enabled_setting = lsp_enabled_setting
-	_lsp.configure("Symbol Usage", _host, _port, {
+	_lsp.configure("Highlights", _host, _port, {
 		"textDocument": {
 			"references": {
 				"dynamicRegistration": false,
 			},
 		},
-	}, _debug)
+	})
 	set_process(true)
 	_connect_script_editor()
 	_attach_to_current_code_edit()
@@ -355,7 +349,6 @@ func _refresh_references() -> void:
 		return
 
 	if not _ensure_connection():
-		_debug("could not connect to the code analysis service.")
 		var fallback_request := _queued_request.duplicate()
 		_queued_request.clear()
 		_apply_fallback_references(fallback_request)
@@ -406,7 +399,6 @@ func _try_send_references_request() -> void:
 			"includeDeclaration": true,
 		},
 	}, request)
-	_debug("sent references request for '%s'." % request["symbol"])
 
 
 func _send_document_sync_notification(request: Dictionary) -> void:
@@ -419,7 +411,6 @@ func _handle_response(response: Dictionary) -> void:
 	var message: Dictionary = response.get("message", {})
 
 	if message.has("error"):
-		_debug("request failed: %s" % JSON.stringify(message["error"]))
 		if typeof(request) == TYPE_DICTIONARY and _request_matches_current(request):
 			_apply_fallback_references(request)
 		return
@@ -432,7 +423,6 @@ func _handle_response(response: Dictionary) -> void:
 
 func _apply_references(references: Variant, request: Dictionary) -> void:
 	if not _request_matches_current(request):
-		_debug("dropped stale references response.")
 		return
 
 	var current_reference := {
@@ -449,7 +439,6 @@ func _apply_references(references: Variant, request: Dictionary) -> void:
 		str(request.get("symbol", ""))
 	)
 	if filtered_references.is_empty():
-		_debug("references response had no usages in current file; using token fallback.")
 		_apply_fallback_references(request)
 		return
 
@@ -462,7 +451,6 @@ func _apply_fallback_references(request: Dictionary) -> void:
 		return
 
 	if bool(request.get("is_member_call", false)):
-		_debug("skipping token fallback for member method call.")
 		_clear_references()
 		return
 
@@ -472,7 +460,6 @@ func _apply_fallback_references(request: Dictionary) -> void:
 		str(request.get("symbol", ""))
 	)
 	if fallback_references.is_empty():
-		_debug("token fallback had no usages in current file.")
 		_clear_references()
 		return
 
@@ -752,22 +739,8 @@ static func should_run_controller(stripe_enabled: bool, highlight_enabled: bool)
 	return stripe_enabled or highlight_enabled
 
 
-func _debug_logs_enabled() -> bool:
-	var settings = _get_editor_settings()
-	if settings == null:
-		return false
-	if _debug_setting == &"" or not settings.has_setting(_debug_setting):
-		return false
-	return bool(settings.get_setting(_debug_setting))
-
-
 func _lsp_enabled() -> bool:
-	var settings = _get_editor_settings()
-	if settings == null:
-		return false
-	if _lsp_enabled_setting == &"" or not settings.has_setting(_lsp_enabled_setting):
-		return false
-	return bool(settings.get_setting(_lsp_enabled_setting))
+	return false
 
 
 func _get_editor_settings():
@@ -781,8 +754,3 @@ func _get_editor_settings():
 		return null
 
 	return editor_interface.get_editor_settings()
-
-
-func _debug(message: String) -> void:
-	if _debug_logs_enabled():
-		print("Symbol Usage Stripe: " + message)
