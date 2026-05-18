@@ -208,7 +208,7 @@ func _create_dock() -> void:
 	_tree.hide_root = false
 	_tree.columns = 1
 	_apply_tree_font_size()
-	_tree.item_activated.connect(_expand_selected_item)
+	_tree.item_activated.connect(_open_selected_item)
 	_tree.item_collapsed.connect(_on_item_collapsed)
 	_tree.gui_input.connect(_on_tree_gui_input)
 	_panel.add_child(_tree)
