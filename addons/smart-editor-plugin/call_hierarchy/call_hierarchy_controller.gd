@@ -329,6 +329,7 @@ func _begin_call_hierarchy() -> void:
 		"visited": root_visited,
 	})
 	root.set_collapsed(false)
+	root.select(0)
 	_node_count = 1
 
 	if _is_engine_callback_method(symbol_range["symbol"]):
