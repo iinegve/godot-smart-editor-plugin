@@ -19,7 +19,7 @@ func shrink_target(current: Dictionary, candidates: Array[Dictionary]) -> Dictio
 
 func pop_contained_in(current: Dictionary) -> Dictionary:
 	while not _history.is_empty():
-		var previous := _history.pop_back()
+		var previous: Dictionary = _history.pop_back()
 		if SmartSelectionRange.contains_or_equal(current, previous):
 			return previous
 	return {}

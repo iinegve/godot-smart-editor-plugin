@@ -170,7 +170,7 @@ func _init_setting(path: StringName, default_value: Variant, type: int, hint: in
 func _init_setting_from_legacy_paths(path: StringName, default_value: Variant, type: int, hint: int = PROPERTY_HINT_NONE, hint_string: String = "", legacy_paths: Array = []) -> void:
 	var settings := EditorInterface.get_editor_settings()
 	if not settings.has_setting(path):
-		var value := default_value
+		var value: Variant = default_value
 		for legacy_path in legacy_paths:
 			if settings.has_setting(legacy_path):
 				value = settings.get_setting(legacy_path)

@@ -745,7 +745,7 @@ func _append_full_line_comment(
 			break
 		container_stack.pop_back()
 
-	var parent := container_stack.back()
+	var parent: Dictionary = container_stack.back()
 	if not collection_stack.is_empty():
 		parent = collection_stack.back()
 

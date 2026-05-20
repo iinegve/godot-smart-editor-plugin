@@ -238,7 +238,7 @@ func _init_setting(path: StringName, default_value: Variant, type: int, hint: in
 func _init_setting_from_legacy_paths(path: StringName, default_value: Variant, type: int, hint: int = PROPERTY_HINT_NONE, hint_string: String = "", legacy_paths: Array = []) -> void:
 	var settings := EditorInterface.get_editor_settings()
 	if not settings.has_setting(path):
-		var value := default_value
+		var value: Variant = default_value
 		for legacy_path in legacy_paths:
 			if settings.has_setting(legacy_path):
 				value = settings.get_setting(legacy_path)
@@ -427,7 +427,7 @@ func _get_current_range(code: CodeEdit) -> Dictionary:
 
 
 func _get_full_file_range(code: CodeEdit) -> Dictionary:
-	var last_line := max(0, code.get_line_count() - 1)
+	var last_line: int = maxi(0, code.get_line_count() - 1)
 	return _make_range(0, 0, last_line, code.get_line(last_line).length())
 
 

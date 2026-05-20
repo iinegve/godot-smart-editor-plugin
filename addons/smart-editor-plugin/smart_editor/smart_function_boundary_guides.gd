@@ -527,9 +527,9 @@ func _visible_line_range() -> Vector2i:
 		return Vector2i(0, -1)
 
 	if not _code.has_method("get_first_visible_line") or not _code.has_method("get_last_full_visible_line"):
-		return Vector2i(0, max(0, _code.get_line_count() - 1))
+		return Vector2i(0, maxi(0, _code.get_line_count() - 1))
 
-	var first := max(0, int(_code.call("get_first_visible_line")) - 1)
+	var first: int = maxi(0, int(_code.call("get_first_visible_line")) - 1)
 	var last := int(_code.call("get_last_full_visible_line"))
 	if last < first:
 		last = first + int(_code.call("get_visible_line_count")) + 1 if _code.has_method("get_visible_line_count") else _code.get_line_count() - 1
