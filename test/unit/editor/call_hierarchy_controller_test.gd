@@ -35,7 +35,7 @@ func test_enclosing_function_symbol_range_finds_nearest_function() -> void:
 	controller.free()
 
 
-func test_references_to_callers_groups_by_enclosing_function() -> void:
+func test_references_to_callers_keeps_distinct_call_sites_in_same_function() -> void:
 	var controller := CallHierarchyController.new()
 	var uri := LspClient.path_to_file_uri("/project/player.gd")
 	controller._file_cache[uri] = [
@@ -59,8 +59,8 @@ func test_references_to_callers_groups_by_enclosing_function() -> void:
 		"character": 5,
 	})
 
-	assert_int(callers.size()).is_equal(2)
-	assert_dict(callers["%s:2:first" % uri]).is_equal({
+	assert_int(callers.size()).is_equal(3)
+	assert_dict(callers["%s:2:first:3:1" % uri]).is_equal({
 		"name": "first",
 		"uri": uri,
 		"line": 2,
@@ -68,7 +68,15 @@ func test_references_to_callers_groups_by_enclosing_function() -> void:
 		"open_line": 3,
 		"open_character": 1,
 	})
-	assert_dict(callers["%s:6:second" % uri]).is_equal({
+	assert_dict(callers["%s:2:first:4:1" % uri]).is_equal({
+		"name": "first",
+		"uri": uri,
+		"line": 2,
+		"character": 5,
+		"open_line": 4,
+		"open_character": 1,
+	})
+	assert_dict(callers["%s:6:second:7:1" % uri]).is_equal({
 		"name": "second",
 		"uri": uri,
 		"line": 6,
@@ -141,7 +149,7 @@ func test_constructor_call_columns_find_class_name_new_calls() -> void:
 	controller.free()
 
 
-func test_constructor_callers_group_class_name_new_calls_by_enclosing_function() -> void:
+func test_constructor_callers_keep_distinct_call_sites_in_same_function() -> void:
 	var controller := CallHierarchyController.new()
 	var player_uri := LspClient.path_to_file_uri("/project/player.gd")
 	var spawner_uri := LspClient.path_to_file_uri("/project/spawner.gd")
@@ -161,14 +169,22 @@ func test_constructor_callers_group_class_name_new_calls_by_enclosing_function()
 
 	var callers := controller._find_constructor_callers_for_class_name("Player", player_uri, [player_uri, spawner_uri])
 
-	assert_int(callers.size()).is_equal(1)
-	assert_dict(callers["%s:2:spawn" % spawner_uri]).is_equal({
+	assert_int(callers.size()).is_equal(2)
+	assert_dict(callers["%s:2:spawn:3:15" % spawner_uri]).is_equal({
 		"name": "spawn",
 		"uri": spawner_uri,
 		"line": 2,
 		"character": 5,
 		"open_line": 3,
 		"open_character": 15,
+	})
+	assert_dict(callers["%s:2:spawn:4:14" % spawner_uri]).is_equal({
+		"name": "spawn",
+		"uri": spawner_uri,
+		"line": 2,
+		"character": 5,
+		"open_line": 4,
+		"open_character": 14,
 	})
 	controller.free()
 

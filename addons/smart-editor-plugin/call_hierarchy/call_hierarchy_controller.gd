@@ -764,7 +764,7 @@ func _find_constructor_callers_for_class_name(target_class_name: String, target_
 				if caller["uri"] == target_uri and caller["line"] == init_line:
 					continue
 
-				var key := "%s:%d:%s" % [caller["uri"], caller["line"], caller["name"]]
+				var key := _call_site_key(caller, line_index, call_column)
 				if not callers.has(key):
 					caller["open_line"] = line_index
 					caller["open_character"] = call_column
@@ -835,13 +835,17 @@ func _references_to_callers(references: Array, request: Dictionary) -> Dictionar
 		if caller["uri"] == request["uri"] and caller["line"] == int(request["line"]):
 			continue
 
-		var key := "%s:%d:%s" % [caller["uri"], caller["line"], caller["name"]]
+		var key := _call_site_key(caller, line, character)
 		if not callers.has(key):
 			caller["open_line"] = line
 			caller["open_character"] = character
 			callers[key] = caller
 
 	return callers
+
+
+func _call_site_key(caller: Dictionary, open_line: int, open_character: int) -> String:
+	return "%s:%d:%s:%d:%d" % [caller["uri"], caller["line"], caller["name"], open_line, open_character]
 
 
 func _mark_item_loaded(request: Dictionary, suffix: String = "") -> void:
