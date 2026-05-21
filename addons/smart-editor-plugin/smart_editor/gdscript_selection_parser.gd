@@ -31,6 +31,7 @@ func build_candidates(text: String, current: Dictionary) -> Array[Dictionary]:
 	var path := _find_smallest_path(root, current)
 	var candidates: Array[Dictionary] = []
 	var member_suffix := _member_suffix_range_for_path(path, current)
+	var lines := text.split("\n", true)
 
 	for index in path.size():
 		var node: Dictionary = path[index]
@@ -56,6 +57,7 @@ func build_candidates(text: String, current: Dictionary) -> Array[Dictionary]:
 		if node.get("kind", "") == KIND_PARAMETER_LIST:
 			_append_range(candidates, _parameter_list_content_range(node, current))
 		if [KIND_BLOCK, KIND_FUNCTION].has(node.get("kind", "")):
+			_append_range(candidates, _conditional_chain_range_for_path(path, index, lines, current))
 			_append_range(candidates, _block_body_range(node, current))
 		_append_range(candidates, _node_selection_range(node, current))
 		if index == 0:
@@ -1087,12 +1089,7 @@ func _block_body_range(block: Dictionary, current: Dictionary) -> Dictionary:
 		return {}
 
 	var body_children := children.slice(1)
-	var containing_index := -1
-	for index in body_children.size():
-		var child: Dictionary = body_children[index]
-		if _range_contains(_node_range(child), current):
-			containing_index = index
-			break
+	var containing_index := _body_child_index_for_range(body_children, current)
 	if containing_index == -1:
 		return {}
 
@@ -1123,6 +1120,178 @@ func _block_body_range(block: Dictionary, current: Dictionary) -> Dictionary:
 	if not _range_contains(body_range, current):
 		return {}
 	return body_range
+
+
+func _body_child_index_for_range(body_children: Array, current: Dictionary) -> int:
+	for index in body_children.size():
+		var child: Dictionary = body_children[index]
+		if _range_contains(_node_range(child), current):
+			return index
+
+	for index in body_children.size():
+		var child: Dictionary = body_children[index]
+		if _ranges_overlap(_node_range(child), current):
+			return index
+
+	return -1
+
+
+func _conditional_chain_range_for_path(path: Array[Dictionary], index: int, lines: PackedStringArray, current: Dictionary) -> Dictionary:
+	if index <= 0:
+		return {}
+
+	var parent: Dictionary = path[index]
+	var selected_child: Dictionary = path[index - 1]
+	return _conditional_chain_range(parent, selected_child, lines, current)
+
+
+func _conditional_chain_range(parent: Dictionary, selected_child: Dictionary, lines: PackedStringArray, current: Dictionary) -> Dictionary:
+	if selected_child.get("kind", "") != KIND_BLOCK:
+		return {}
+
+	var children: Array = parent.get("children", [])
+	var selected_index := _child_index_for_node(children, selected_child)
+	if selected_index == -1:
+		return {}
+
+	var selected_keyword := _conditional_block_keyword(selected_child, lines)
+	if not ["if", "elif", "else"].has(selected_keyword):
+		return {}
+
+	var chain_start := selected_index
+	while chain_start > 0:
+		var previous_index := _previous_conditional_block_index(children, chain_start, lines, int(selected_child["from_col"]))
+		if previous_index == -1:
+			break
+
+		var previous_block: Dictionary = children[previous_index]
+		var previous_keyword := _conditional_block_keyword(previous_block, lines)
+		if not ["if", "elif"].has(previous_keyword):
+			break
+		chain_start = previous_index
+
+	var first_chain_block: Dictionary = children[chain_start]
+	if _conditional_block_keyword(first_chain_block, lines) != "if":
+		return {}
+
+	var chain_end := chain_start
+	while chain_end < children.size() - 1:
+		var next_index := _next_conditional_block_index(children, chain_end, lines, int(first_chain_block["from_col"]))
+		if next_index == -1:
+			break
+
+		var next_block: Dictionary = children[next_index]
+		var next_keyword := _conditional_block_keyword(next_block, lines)
+		if not ["elif", "else"].has(next_keyword):
+			break
+		chain_end = next_index
+		if next_keyword == "else":
+			break
+
+	if selected_index < chain_start or selected_index > chain_end:
+		return {}
+	if chain_start == chain_end:
+		return {}
+
+	var first_block: Dictionary = children[chain_start]
+	var last_block: Dictionary = children[chain_end]
+	var chain_range := {
+		"from_line": first_block["from_line"],
+		"from_col": first_block["from_col"],
+		"to_line": last_block["to_line"],
+		"to_col": last_block["to_col"],
+	}
+	if not _range_contains(chain_range, current):
+		return {}
+	return chain_range
+
+
+func _previous_conditional_block_index(children: Array, from_index: int, lines: PackedStringArray, from_col: int) -> int:
+	var index := from_index - 1
+	while index >= 0:
+		var child: Dictionary = children[index]
+		if _is_header_statement_for_next_block(children, index):
+			index -= 1
+			continue
+		if child.get("kind", "") != KIND_BLOCK:
+			return -1
+		if int(child["from_col"]) != from_col:
+			return -1
+		if not ["if", "elif"].has(_conditional_block_keyword(child, lines)):
+			return -1
+		return index
+	return -1
+
+
+func _next_conditional_block_index(children: Array, from_index: int, lines: PackedStringArray, from_col: int) -> int:
+	var index := from_index + 1
+	while index < children.size():
+		var child: Dictionary = children[index]
+		if _is_header_statement_for_next_block(children, index):
+			index += 1
+			continue
+		if child.get("kind", "") != KIND_BLOCK:
+			return -1
+		if int(child["from_col"]) != from_col:
+			return -1
+		if not ["elif", "else"].has(_conditional_block_keyword(child, lines)):
+			return -1
+		return index
+	return -1
+
+
+func _is_header_statement_for_next_block(children: Array, index: int) -> bool:
+	if index < 0 or index + 1 >= children.size():
+		return false
+
+	var maybe_statement: Dictionary = children[index]
+	var maybe_block: Dictionary = children[index + 1]
+	if maybe_statement.get("kind", "") != KIND_STATEMENT or maybe_block.get("kind", "") != KIND_BLOCK:
+		return false
+
+	var block_children: Array = maybe_block.get("children", [])
+	if block_children.is_empty():
+		return false
+
+	var block_header: Dictionary = block_children[0]
+	return _ranges_equal(_node_range(maybe_statement), _node_range(block_header))
+
+
+func _child_index_for_node(children: Array, target: Dictionary) -> int:
+	for index in children.size():
+		var child: Dictionary = children[index]
+		if _ranges_equal(_node_range(child), _node_range(target)):
+			return index
+	return -1
+
+
+func _conditional_block_keyword(block: Dictionary, lines: PackedStringArray) -> String:
+	if block.get("kind", "") != KIND_BLOCK:
+		return ""
+	if int(block["from_line"]) < 0 or int(block["from_line"]) >= lines.size():
+		return ""
+
+	var line := String(lines[int(block["from_line"])])
+	var from_col := int(block["from_col"])
+	if from_col >= line.length():
+		return ""
+
+	if _line_begins_with_keyword(line, from_col, "if"):
+		return "if"
+	if _line_begins_with_keyword(line, from_col, "elif"):
+		return "elif"
+	if _line_begins_with_keyword(line, from_col, "else"):
+		return "else"
+	return ""
+
+
+func _line_begins_with_keyword(line: String, from_col: int, keyword: String) -> bool:
+	if line.substr(from_col, keyword.length()) != keyword:
+		return false
+	var after_keyword_col := from_col + keyword.length()
+	if after_keyword_col >= line.length():
+		return true
+	return not _is_identifier_char(line[after_keyword_col])
 
 
 func _statement_expression_range(statement: Dictionary, current: Dictionary) -> Dictionary:
@@ -1372,6 +1541,13 @@ func _is_zero_width_range(selection_range: Dictionary) -> bool:
 
 func _range_contains(outer: Dictionary, inner: Dictionary) -> bool:
 	return SmartSelectionRange.contains_or_equal(outer, inner)
+
+
+func _ranges_overlap(a: Dictionary, b: Dictionary) -> bool:
+	return (
+		_compare_positions(a["from_line"], a["from_col"], b["to_line"], b["to_col"]) < 0
+		and _compare_positions(b["from_line"], b["from_col"], a["to_line"], a["to_col"]) < 0
+	)
 
 
 func _ranges_equal(a: Dictionary, b: Dictionary) -> bool:

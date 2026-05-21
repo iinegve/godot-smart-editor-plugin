@@ -129,6 +129,48 @@ func test_if_block_body_expands_before_header_block() -> void:
 	})
 
 
+func test_else_block_expands_to_if_else_chain_before_function_body() -> void:
+	var code := "func attack(source: Unit, target: Unit):\n\tvar a = 4\n\tif a > 5:\n\t\tprint(17)\n\t\tvar blah2 = 17 * 2\n\t\tprint(blah2)\n\telse:\n\t\tprint(17)\n\t\tvar blah2 = 17 * 2\n\t\tprint(blah2)\n\tpass"
+	_assert_next_plugin_expansion({
+		"code": code,
+		"current": {
+			"from_line": 6,
+			"from_col": 1,
+			"to_line": 9,
+			"to_col": 14,
+		},
+		"expected": "if a > 5:\n\t\tprint(17)\n\t\tvar blah2 = 17 * 2\n\t\tprint(blah2)\n\telse:\n\t\tprint(17)\n\t\tvar blah2 = 17 * 2\n\t\tprint(blah2)",
+	})
+
+
+func test_if_block_expands_to_if_else_chain_before_function_body() -> void:
+	var code := "func attack(source: Unit, target: Unit):\n\tvar a = 4\n\tif a > 5:\n\t\tprint(17)\n\t\tvar blah2 = 17 * 2\n\t\tprint(blah2)\n\telse:\n\t\tprint(17)\n\t\tvar blah2 = 17 * 2\n\t\tprint(blah2)\n\tpass"
+	_assert_next_plugin_expansion({
+		"code": code,
+		"current": {
+			"from_line": 2,
+			"from_col": 1,
+			"to_line": 5,
+			"to_col": 14,
+		},
+		"expected": "if a > 5:\n\t\tprint(17)\n\t\tvar blah2 = 17 * 2\n\t\tprint(blah2)\n\telse:\n\t\tprint(17)\n\t\tvar blah2 = 17 * 2\n\t\tprint(blah2)",
+	})
+
+
+func test_if_else_chain_expands_to_function_body_before_function_header() -> void:
+	var code := "func attack(source: Unit, target: Unit):\n\tprint(source, \" attacking \", target)\n\tvar a = 4\n\tif a > 5:\n\t\tprint(17)\n\t\tvar blah2 = 17 * 2\n\t\tprint(blah2)\n\telse:\n\t\tprint(17)\n\t\tvar blah2 = 17 * 2\n\t\tprint(blah2)\n\tpass"
+	_assert_next_plugin_expansion({
+		"code": code,
+		"current": {
+			"from_line": 3,
+			"from_col": 1,
+			"to_line": 10,
+			"to_col": 14,
+		},
+		"expected": "print(source, \" attacking \", target)\n\tvar a = 4\n\tif a > 5:\n\t\tprint(17)\n\t\tvar blah2 = 17 * 2\n\t\tprint(blah2)\n\telse:\n\t\tprint(17)\n\t\tvar blah2 = 17 * 2\n\t\tprint(blah2)\n\tpass",
+	})
+
+
 func test_function_body_expands_before_signature_block() -> void:
 	var code := "func _finalize() -> void:\n\tqueue_delete(_cli_runner)\n\tif OS.is_stdout_verbose():\n\t\tprints(\"Finallize ..\")"
 	_assert_expansions({
