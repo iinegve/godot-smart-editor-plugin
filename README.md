@@ -107,6 +107,10 @@ To inspect the same addon-only archive shape that Asset Library users receive, r
 git archive --format=zip --output smart-editor-plugin.zip HEAD
 ```
 
+### Release Automation
+
+Pushing to `main` starts the release workflow. It increments the patch/build number from the highest existing `vX.Y.Z` tag, copies the addon into a temporary package directory, injects the generated version into the packaged `plugin.cfg`, and creates a GitHub release with an explicitly pushed next tag. The workflow expects at least one seed tag to exist.
+
 ## License
 
 Smart Editor is available under the MIT license. See `LICENSE` for details.

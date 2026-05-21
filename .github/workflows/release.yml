@@ -2,50 +2,109 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Release version, for example v0.1.0"
-        required: true
-        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-main
+  cancel-in-progress: true
+
 jobs:
-  package:
+  release:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release version
+        id: version
+        run: |
+          VERSION="$(python3 <<'PY'
+          import re
+          import subprocess
+
+          versions = []
+          tags = subprocess.check_output(
+              ["git", "tag", "--list", "v[0-9]*.[0-9]*.[0-9]*"],
+              text=True,
+          ).splitlines()
+          for tag in tags:
+              tag_match = re.fullmatch(r'v(\d+)\.(\d+)\.(\d+)', tag)
+              if tag_match:
+                  versions.append(tuple(int(part) for part in tag_match.groups()))
+
+          if not versions:
+              raise SystemExit("No vX.Y.Z release tags found. Create and push a seed tag first.")
+
+          major, minor, patch = max(versions)
+          next_version = f"{major}.{minor}.{patch + 1}"
+          print(next_version)
+          PY
+          )"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Package addon
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          VERSION="${GITHUB_REF_NAME}"
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
-          fi
-          case "$VERSION" in
-            v*) ;;
-            *)
-              echo "Release version must start with 'v', for example v0.1.0."
-              exit 1
-              ;;
-          esac
-          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
-          git archive \
-            --format=zip \
-            --output="smart-editor-plugin-${VERSION}.zip" \
-            HEAD
+          PACKAGE_DIR="$RUNNER_TEMP/smart-editor-plugin-package"
+          rm -rf "$PACKAGE_DIR"
+          mkdir -p "$PACKAGE_DIR/addons"
+          rsync -a --exclude='media/' addons/smart-editor-plugin "$PACKAGE_DIR/addons/"
+
+          PACKAGE_DIR="$PACKAGE_DIR" python3 <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          plugin_cfg = Path(os.environ["PACKAGE_DIR"]) / "addons/smart-editor-plugin/plugin.cfg"
+          text = plugin_cfg.read_text()
+          text, replacement_count = re.subn(
+              r'^version="[^"]*"$',
+              f'version="{os.environ["VERSION"]}"',
+              text,
+              count=1,
+              flags=re.MULTILINE,
+          )
+          if replacement_count != 1:
+              raise SystemExit("Could not inject version into packaged plugin.cfg.")
+          plugin_cfg.write_text(text)
+          PY
+
+          (
+            cd "$PACKAGE_DIR"
+            zip -qr "$GITHUB_WORKSPACE/smart-editor-plugin-${TAG}.zip" addons
+          )
+
+      - name: Create release tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git tag -a "$TAG" "$GITHUB_SHA" -m "Smart Editor ${TAG}"
+          git push origin "$TAG"
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          gh release create "$VERSION" \
-            "smart-editor-plugin-${VERSION}.zip" \
-            --title "$VERSION" \
-            --notes "Smart Editor ${VERSION}" \
+          gh release create "$TAG" \
+            "smart-editor-plugin-${TAG}.zip" \
+            --title "$TAG" \
+            --notes "Smart Editor ${TAG}" \
             --target "$GITHUB_SHA"
