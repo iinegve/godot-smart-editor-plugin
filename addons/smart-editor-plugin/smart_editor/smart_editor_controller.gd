@@ -1046,16 +1046,13 @@ func _begin_inline() -> void:
 
 	var symbol_range := _get_symbol_range_under_caret(_inline_code)
 	if symbol_range.is_empty():
-		print("Inline Variable: place the caret on a local variable declaration.")
+		print("Inline Variable: place the caret on a local variable.")
 		return
 
 	_inline_symbol = symbol_range["symbol"]
 	_inline_symbol_line = symbol_range["line"]
 	_inline_symbol_column = symbol_range["column"]
-	_inline_expression = _parse_declaration_expression(_inline_code.get_line(_inline_symbol_line), _inline_symbol, _inline_symbol_column)
-	if _inline_expression.is_empty():
-		print("Inline Variable: caret must be on the variable name in a single-line local var declaration.")
-		return
+	_inline_expression = ""
 
 	_inline_uri = _path_to_file_uri(ProjectSettings.globalize_path(_inline_script_path))
 	_inline_queued = true
@@ -1167,6 +1164,15 @@ func _inline_apply_from_references(references: Variant) -> void:
 		print("Inline Variable: could not read references.")
 		return
 
+	var declaration := _inline_find_declaration_from_references(references)
+	if declaration.is_empty():
+		print("Inline Variable: could not find a single-line local var declaration for '%s'." % _inline_symbol)
+		return
+
+	_inline_symbol_line = int(declaration["line"])
+	_inline_symbol_column = int(declaration["column"])
+	_inline_expression = str(declaration["expression"])
+
 	if _inline_references_include_reassignment(references):
 		print("Inline Variable: refusing to inline '%s' because it appears to be assigned again." % _inline_symbol)
 		return
@@ -1184,6 +1190,59 @@ func _inline_apply_from_references(references: Variant) -> void:
 	_inline_code.remove_line_at(_inline_symbol_line)
 	_inline_code.end_complex_operation()
 	_inline_code.deselect()
+
+
+func _inline_find_declaration_from_references(references: Array) -> Dictionary:
+	var declaration: Dictionary = {}
+	for reference in references:
+		if typeof(reference) != TYPE_DICTIONARY:
+			continue
+
+		var candidate := _inline_declaration_from_reference(reference)
+		if candidate.is_empty():
+			continue
+		if not declaration.is_empty() and not _same_inline_declaration(declaration, candidate):
+			return {}
+
+		declaration = candidate
+
+	return declaration
+
+
+func _inline_declaration_from_reference(reference: Dictionary) -> Dictionary:
+	if _inline_code == null:
+		return {}
+	if reference.get("uri", "") != _inline_uri:
+		return {}
+	if not reference.has("range") or typeof(reference["range"]) != TYPE_DICTIONARY:
+		return {}
+
+	var range: Dictionary = reference["range"]
+	if not range.has("start") or typeof(range["start"]) != TYPE_DICTIONARY:
+		return {}
+
+	var start: Dictionary = range["start"]
+	var line_index := int(start.get("line", -1))
+	var column := int(start.get("character", -1))
+	if line_index < 0 or line_index >= _inline_code.get_line_count():
+		return {}
+
+	var expression := _parse_declaration_expression(_inline_code.get_line(line_index), _inline_symbol, column)
+	if expression.is_empty():
+		return {}
+
+	return {
+		"line": line_index,
+		"column": column,
+		"expression": expression,
+	}
+
+
+func _same_inline_declaration(a: Dictionary, b: Dictionary) -> bool:
+	return (
+		int(a.get("line", -1)) == int(b.get("line", -2))
+		and int(a.get("column", -1)) == int(b.get("column", -2))
+	)
 
 
 func _inline_references_include_reassignment(references: Array) -> bool:
