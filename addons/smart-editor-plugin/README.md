@@ -62,8 +62,9 @@ Settings are available in `Editor Settings` under `Plugin` -> `Smart Editor`.
 
 ### Function Boundary Guides
 
-- `Enabled`: show or hide function boundary guides.
-- `Guide Color`: color for function boundary guide lines.
+- `Guide Color`: color for function separator and indent guide lines.
+- `Show Function Separator Guides`: show or hide horizontal function separator lines.
+- `Show Indent Guides`: show or hide vertical block indentation guide lines.
 
 ## Installation
 

@@ -189,6 +189,26 @@ func test_folded_lines_signature_changes_when_folded_lines_change() -> void:
 	assert_str(initial).is_not_equal(changed)
 
 
+func test_indent_guide_block_border_columns_use_full_indent_steps() -> void:
+	assert_array(Array(FunctionBoundaryGuides.indent_guide_block_border_columns(10, 4))).is_equal([0, 4])
+
+
+func test_indent_guide_block_border_columns_include_exact_indent_step() -> void:
+	assert_array(Array(FunctionBoundaryGuides.indent_guide_block_border_columns(8, 4))).is_equal([0, 4])
+
+
+func test_indent_guide_block_border_columns_mark_first_indent_at_column_zero() -> void:
+	assert_array(Array(FunctionBoundaryGuides.indent_guide_block_border_columns(4, 4))).is_equal([0])
+
+
+func test_indent_guide_block_border_columns_ignore_partial_indent() -> void:
+	assert_array(Array(FunctionBoundaryGuides.indent_guide_block_border_columns(3, 4))).is_empty()
+
+
+func test_indent_guide_x_uses_content_start_column_width_and_horizontal_scroll() -> void:
+	assert_float(FunctionBoundaryGuides.indent_guide_x(48.0, 8, 7.5, 10.0)).is_equal(98.0)
+
+
 func _boundary(header_line: int, end_line: int, indent: int) -> Dictionary:
 	return {
 		"header_line": header_line,

@@ -4,7 +4,8 @@ extends Control
 const DEFAULT_GUIDE_COLOR := Color(0.78, 0.78, 0.78, 0.18)
 const GUIDE_WIDTH := 1.0
 
-var _enabled_setting: StringName = &""
+var _function_separator_guides_enabled_setting: StringName = &""
+var _indent_guides_enabled_setting: StringName = &""
 var _color_setting: StringName = &""
 var _code: CodeEdit
 var _v_scroll_bar: VScrollBar
@@ -45,9 +46,14 @@ func _exit_tree() -> void:
 	_disconnect_editor_settings()
 
 
-func configure(enabled_setting: StringName, color_setting: StringName) -> void:
+func configure(
+	function_separator_guides_enabled_setting: StringName,
+	indent_guides_enabled_setting: StringName,
+	color_setting: StringName
+) -> void:
 	_disconnect_editor_settings()
-	_enabled_setting = enabled_setting
+	_function_separator_guides_enabled_setting = function_separator_guides_enabled_setting
+	_indent_guides_enabled_setting = indent_guides_enabled_setting
 	_color_setting = color_setting
 	_connect_editor_settings()
 	_invalidate_boundaries()
@@ -147,16 +153,21 @@ static func _function_signature_end_line(lines: PackedStringArray, header_line: 
 
 
 func _draw() -> void:
-	if _code == null or not is_instance_valid(_code) or not _is_enabled():
+	if _code == null or not is_instance_valid(_code) or not _any_guides_enabled():
 		return
 
-	if _boundaries_dirty:
+	var function_separator_guides_enabled := _function_separator_guides_enabled()
+	if function_separator_guides_enabled and _boundaries_dirty:
 		_rebuild_boundaries()
 
 	var guide_color := _guide_color()
 	var visible_lines := _visible_line_range()
-	_draw_leading_function_guide(guide_color, visible_lines)
+	if _indent_guides_enabled():
+		_draw_indent_guides(guide_color, visible_lines)
+	if not function_separator_guides_enabled:
+		return
 
+	_draw_leading_function_guide(guide_color, visible_lines)
 	for boundary in _boundaries:
 		var header_line := int(boundary.get("header_line", -1))
 		var end_line := int(boundary.get("end_line", -1))
@@ -173,6 +184,38 @@ func _draw() -> void:
 			continue
 
 		draw_line(Vector2(start_x, y), Vector2(size.x, y), guide_color, GUIDE_WIDTH)
+
+
+func _draw_indent_guides(guide_color: Color, visible_lines: Vector2i) -> void:
+	if _code == null or not is_instance_valid(_code):
+		return
+
+	var indent_size := _indent_size()
+	var column_width := _indent_column_width()
+	if indent_size <= 0 or column_width <= 0.0:
+		return
+
+	var start_x := _guide_start_x()
+	for line in range(visible_lines.x, visible_lines.y + 1):
+		if line < 0 or line >= _code.get_line_count():
+			continue
+
+		var line_rect := _visible_line_overlay_rect(line)
+		if line_rect.position.y < 0.0 or line_rect.size.y <= 0.0:
+			continue
+
+		var indent_level := _guide_indent_level(line)
+		for visual_column in indent_guide_block_border_columns(indent_level, indent_size):
+			var x := indent_guide_x(start_x, visual_column, column_width, float(_code.get_h_scroll()))
+			if x < start_x or x > size.x:
+				continue
+
+			draw_line(
+				Vector2(x, line_rect.position.y),
+				Vector2(x, line_rect.position.y + line_rect.size.y),
+				guide_color,
+				GUIDE_WIDTH
+			)
 
 
 func _draw_leading_function_guide(guide_color: Color, visible_lines: Vector2i) -> void:
@@ -268,6 +311,23 @@ static func folded_lines_signature(folded_lines: PackedInt32Array) -> String:
 		parts.append(str(line))
 
 	return ",".join(parts)
+
+
+static func indent_guide_block_border_columns(indent_level: int, indent_size: int) -> PackedInt32Array:
+	var result := PackedInt32Array()
+	if indent_level <= 0 or indent_size <= 0:
+		return result
+
+	var column := indent_size
+	while column <= indent_level:
+		result.append(column - indent_size)
+		column += indent_size
+
+	return result
+
+
+static func indent_guide_x(start_x: float, visual_column: int, column_width: float, horizontal_scroll: float) -> float:
+	return start_x + float(visual_column) * column_width - horizontal_scroll
 
 
 func _boundary_guide_line(header_line: int, end_line: int) -> int:
@@ -397,6 +457,58 @@ func _guide_start_x() -> float:
 	return guide_start_x_for_gutter(float(_code.get_total_gutter_width()), _code_left_content_margin())
 
 
+func _guide_indent_level(line: int) -> int:
+	var text := _code.get_line(line)
+	if not text.strip_edges().is_empty():
+		return _raw_indent_level(line)
+
+	var previous_line := _previous_non_empty_line_before(line)
+	var next_line := _next_non_empty_line_after(line)
+	var previous_indent := _raw_indent_level(previous_line) if previous_line != -1 else -1
+	var next_indent := _raw_indent_level(next_line) if next_line != -1 else -1
+
+	if previous_indent == -1:
+		return maxi(0, next_indent)
+	if next_indent == -1:
+		return maxi(0, previous_indent)
+
+	return maxi(0, mini(previous_indent, next_indent))
+
+
+func _raw_indent_level(line: int) -> int:
+	if _code == null or not is_instance_valid(_code):
+		return 0
+	if line < 0 or line >= _code.get_line_count():
+		return 0
+	if _code.has_method("get_indent_level"):
+		var indent_level: Variant = _code.call("get_indent_level", line)
+		return maxi(0, int(indent_level))
+
+	return _indent_columns(_code.get_line(line))
+
+
+func _indent_size() -> int:
+	if _code == null or not is_instance_valid(_code):
+		return 1
+	if _code.has_method("get_indent_size"):
+		var indent_size: Variant = _code.call("get_indent_size")
+		return maxi(1, int(indent_size))
+
+	return 1
+
+
+func _indent_column_width() -> float:
+	if _code == null or not is_instance_valid(_code):
+		return 0.0
+
+	var font: Font = _code.get_theme_font("font")
+	if font == null:
+		return 0.0
+
+	var font_size := _code.get_theme_font_size("font_size")
+	return font.get_string_size(" ", HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x
+
+
 func _line_overlay_rect(line: int) -> Rect2:
 	var direct_rect := Rect2(_code.get_rect_at_line_column(line, 0))
 	if direct_rect.position.y >= 0.0 and direct_rect.size.y > 0.0:
@@ -405,6 +517,14 @@ func _line_overlay_rect(line: int) -> Rect2:
 		return overlay_rect
 
 	return _line_overlay_rect_from_scroll_position(line)
+
+
+func _visible_line_overlay_rect(line: int) -> Rect2:
+	var direct_rect := Rect2(_code.get_rect_at_line_column(line, 0))
+	if direct_rect.position.y < 0.0 or direct_rect.size.y <= 0.0:
+		return Rect2(-1.0, -1.0, 0.0, 0.0)
+
+	return _code_rect_to_overlay_rect(direct_rect)
 
 
 func _line_overlay_rect_from_scroll_position(line: int) -> Rect2:
@@ -511,6 +631,19 @@ func _previous_non_empty_line_before(line: int) -> int:
 	return -1
 
 
+func _next_non_empty_line_after(line: int) -> int:
+	if _code == null or not is_instance_valid(_code):
+		return -1
+
+	var search_line := maxi(0, line + 1)
+	while search_line < _code.get_line_count():
+		if not _code.get_line(search_line).strip_edges().is_empty():
+			return search_line
+		search_line += 1
+
+	return -1
+
+
 func _code_rect_to_overlay_rect(code_rect: Rect2) -> Rect2:
 	if _code == null or not is_instance_valid(_code):
 		return Rect2()
@@ -604,15 +737,30 @@ func _invalidate_boundaries() -> void:
 	queue_redraw()
 
 
-func _is_enabled() -> bool:
-	if _enabled_setting == &"":
+func _any_guides_enabled() -> bool:
+	return _function_separator_guides_enabled() or _indent_guides_enabled()
+
+
+func _function_separator_guides_enabled() -> bool:
+	if _function_separator_guides_enabled_setting == &"":
 		return true
 
+	return _bool_setting(_function_separator_guides_enabled_setting, true)
+
+
+func _indent_guides_enabled() -> bool:
+	if _indent_guides_enabled_setting == &"":
+		return true
+
+	return _bool_setting(_indent_guides_enabled_setting, true)
+
+
+func _bool_setting(path: StringName, default_value: bool) -> bool:
 	var settings := EditorInterface.get_editor_settings()
-	if settings == null or not settings.has_setting(_enabled_setting):
-		return true
+	if settings == null or not settings.has_setting(path):
+		return default_value
 
-	return bool(settings.get_setting(_enabled_setting))
+	return bool(settings.get_setting(path))
 
 
 func _guide_color() -> Color:

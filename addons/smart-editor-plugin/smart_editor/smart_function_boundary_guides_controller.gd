@@ -3,7 +3,8 @@ extends Node
 
 const FunctionBoundaryGuides := preload("res://addons/smart-editor-plugin/smart_editor/smart_function_boundary_guides.gd")
 
-var _enabled_setting: StringName = &""
+var _function_separator_guides_enabled_setting: StringName = &""
+var _indent_guides_enabled_setting: StringName = &""
 var _color_setting: StringName = &""
 var _script_editor = null
 var _code: CodeEdit
@@ -11,8 +12,13 @@ var _guides = null
 var _script_path := ""
 
 
-func configure(enabled_setting: StringName, color_setting: StringName) -> void:
-	_enabled_setting = enabled_setting
+func configure(
+	function_separator_guides_enabled_setting: StringName,
+	indent_guides_enabled_setting: StringName,
+	color_setting: StringName
+) -> void:
+	_function_separator_guides_enabled_setting = function_separator_guides_enabled_setting
+	_indent_guides_enabled_setting = indent_guides_enabled_setting
 	_color_setting = color_setting
 	set_process(true)
 	_connect_script_editor()
@@ -25,10 +31,7 @@ func _exit_tree() -> void:
 
 
 func _process(_delta: float) -> void:
-	if _enabled_setting == &"":
-		return
-
-	if not _is_enabled():
+	if not _any_guides_enabled():
 		_detach_code_edit()
 		return
 
@@ -74,7 +77,7 @@ func _attach_to_current_code_edit() -> void:
 	_guides = FunctionBoundaryGuides.new()
 	_guides.name = "SmartFunctionBoundaryGuides"
 	_guides.z_index = 6
-	_guides.configure(_enabled_setting, _color_setting)
+	_guides.configure(_function_separator_guides_enabled_setting, _indent_guides_enabled_setting, _color_setting)
 	_code.add_child(_guides)
 	_layout_guides()
 	_guides.attach_to_code(_code)
@@ -103,15 +106,22 @@ func _layout_guides() -> void:
 	_guides.offset_bottom = 0.0
 
 
-func _is_enabled() -> bool:
-	if _enabled_setting == &"":
-		return true
+func _any_guides_enabled() -> bool:
+	return (
+		_bool_setting(_function_separator_guides_enabled_setting, true)
+		or _bool_setting(_indent_guides_enabled_setting, true)
+	)
+
+
+func _bool_setting(path: StringName, default_value: bool) -> bool:
+	if path == &"":
+		return default_value
 
 	var settings := EditorInterface.get_editor_settings()
-	if settings == null or not settings.has_setting(_enabled_setting):
-		return true
+	if settings == null or not settings.has_setting(path):
+		return default_value
 
-	return bool(settings.get_setting(_enabled_setting))
+	return bool(settings.get_setting(path))
 
 
 func _on_editor_script_changed(_script: Script) -> void:
