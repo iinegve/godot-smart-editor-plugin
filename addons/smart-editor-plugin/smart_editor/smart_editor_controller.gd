@@ -21,6 +21,7 @@ const SETTING_SHRINK_SHORTCUT := SETTING_EDITOR_PREFIX + &"shrink_selection"
 const SETTING_EXTRACT_SHORTCUT := SETTING_EDITOR_PREFIX + &"extract_local_variable"
 const SETTING_RENAME_SHORTCUT := SETTING_EDITOR_PREFIX + &"rename_symbol"
 const SETTING_INLINE_SHORTCUT := SETTING_EDITOR_PREFIX + &"inline_variable"
+const SETTING_RENAME_MULTI_FILE_WARNING_ENABLED := SETTING_EDITOR_PREFIX + &"show_multi_file_rename_warning"
 const SETTING_SYMBOL_USAGE_STRIPE_ENABLED := SETTING_HIGHLIGHTS_PREFIX + &"stripe_highlights_enabled"
 const SETTING_SYMBOL_USAGE_HIGHLIGHT_ENABLED := SETTING_HIGHLIGHTS_PREFIX + &"in-editor_highlights_enabled"
 const SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR := SETTING_HIGHLIGHTS_PREFIX + &"highlight_color"
@@ -51,6 +52,7 @@ const LEGACY_SETTING_SHRINK_SHORTCUT := SETTINGS_PREFIX + &"shrink_selection"
 const LEGACY_SETTING_EXTRACT_SHORTCUT := SETTINGS_PREFIX + &"extract_local_variable"
 const LEGACY_SETTING_RENAME_SHORTCUT := SETTINGS_PREFIX + &"rename_symbol"
 const LEGACY_SETTING_INLINE_SHORTCUT := SETTINGS_PREFIX + &"inline_variable"
+const LEGACY_SETTING_RENAME_MULTI_FILE_WARNING_DISMISSED := SETTING_EDITOR_PREFIX + &"rename_multi_file_warning_dismissed"
 const REMOVED_SETTING_DEBUG_LOGS := SETTINGS_PREFIX + &"debug_logs"
 const REMOVED_SETTING_DIAGNOSTICS_DEBUG_LOGS := SETTINGS_PREFIX + &"diagnostics/debug_logs_enabled"
 const REMOVED_SETTING_RENAME_LSP_PROBE_ONLY := SETTINGS_PREFIX + &"rename_lsp_probe_only"
@@ -75,6 +77,12 @@ var _extract_expression := ""
 var _rename_dialog: ConfirmationDialog
 var _rename_name_edit: LineEdit
 var _rename_prompt_label: Label
+var _rename_multi_file_warning_dialog: ConfirmationDialog
+var _rename_multi_file_warning_icon: TextureRect
+var _rename_multi_file_warning_label: Label
+var _rename_multi_file_warning_check_box: CheckBox
+var _rename_pending_workspace_edit: Variant = null
+var _rename_pending_new_name := ""
 var _rename_code: CodeEdit
 var _rename_script_path := ""
 var _rename_symbol := ""
@@ -104,6 +112,7 @@ func _enter_tree() -> void:
 	_configure_lsp_clients()
 	_create_extract_dialog()
 	_create_rename_dialog()
+	_create_rename_multi_file_warning_dialog()
 	_create_symbol_usage_controller()
 	_rename_prewarm_pending = true
 	set_process_shortcut_input(true)
@@ -135,6 +144,8 @@ func _exit_tree() -> void:
 		_extract_dialog.queue_free()
 	if _rename_dialog != null:
 		_rename_dialog.queue_free()
+	if _rename_multi_file_warning_dialog != null:
+		_rename_multi_file_warning_dialog.queue_free()
 	if _symbol_usage_controller != null:
 		_symbol_usage_controller.queue_free()
 	if _function_boundary_guides_controller != null:
@@ -189,6 +200,7 @@ func _init_settings() -> void:
 	_init_shortcut_setting(SETTING_EXTRACT_SHORTCUT, _make_shortcut(KEY_V, true, true), LEGACY_SETTING_EXTRACT_SHORTCUT)
 	_init_shortcut_setting(SETTING_RENAME_SHORTCUT, _make_shortcut(KEY_R, true, true), LEGACY_SETTING_RENAME_SHORTCUT)
 	_init_shortcut_setting(SETTING_INLINE_SHORTCUT, _make_shortcut(KEY_N, true, true), LEGACY_SETTING_INLINE_SHORTCUT)
+	_init_rename_multi_file_warning_setting()
 	_init_setting_from_legacy_paths(SETTING_SYMBOL_USAGE_STRIPE_ENABLED, false, TYPE_BOOL, PROPERTY_HINT_NONE, "", [
 		LEGACY_SETTING_SYMBOL_USAGE_STRIPE_ENABLED,
 		PREVIOUS_SETTING_SYMBOL_USAGE_STRIPE_ENABLED,
@@ -223,6 +235,21 @@ func _init_settings() -> void:
 		REMOVED_SETTING_SYMBOL_USAGE_PROFILE_LOGS,
 		REMOVED_SETTING_RENAME_PROFILE_LOGS,
 	])
+
+
+func _init_rename_multi_file_warning_setting() -> void:
+	var settings := EditorInterface.get_editor_settings()
+	if not settings.has_setting(SETTING_RENAME_MULTI_FILE_WARNING_ENABLED):
+		var value := true
+		if settings.has_setting(LEGACY_SETTING_RENAME_MULTI_FILE_WARNING_DISMISSED):
+			value = not bool(settings.get_setting(LEGACY_SETTING_RENAME_MULTI_FILE_WARNING_DISMISSED))
+		settings.set_setting(SETTING_RENAME_MULTI_FILE_WARNING_ENABLED, value)
+	settings.set_initial_value(SETTING_RENAME_MULTI_FILE_WARNING_ENABLED, true, false)
+	settings.add_property_info({
+		"name": SETTING_RENAME_MULTI_FILE_WARNING_ENABLED,
+		"type": TYPE_BOOL,
+	})
+	_erase_setting(LEGACY_SETTING_RENAME_MULTI_FILE_WARNING_DISMISSED)
 
 
 func _init_function_boundary_settings() -> void:
@@ -303,8 +330,32 @@ func _get_plugin_setting(path: StringName, default_value: Variant) -> Variant:
 	return settings.get_setting(path)
 
 
+func _is_rename_multi_file_warning_enabled() -> bool:
+	return bool(_get_plugin_setting(SETTING_RENAME_MULTI_FILE_WARNING_ENABLED, true))
+
+
+func _set_rename_multi_file_warning_enabled(enabled: bool) -> void:
+	EditorInterface.get_editor_settings().set_setting(SETTING_RENAME_MULTI_FILE_WARNING_ENABLED, enabled)
+
+
+func _get_editor_icon(icon_names: Array) -> Texture2D:
+	var base_control := EditorInterface.get_base_control()
+	if base_control == null:
+		return null
+
+	for icon_name in icon_names:
+		if base_control.has_theme_icon(icon_name, &"EditorIcons"):
+			return base_control.get_theme_icon(icon_name, &"EditorIcons")
+
+	return null
+
+
 func _dialog_width() -> int:
 	return int(_get_plugin_setting(SETTING_DIALOG_WIDTH, 420))
+
+
+func _rename_warning_dialog_width() -> int:
+	return maxi(_dialog_width() * 2, 760)
 
 
 func _shortcut_matches(path: StringName, event: InputEvent) -> bool:
@@ -367,6 +418,46 @@ func _create_rename_dialog() -> void:
 
 	_rename_dialog.add_child(box)
 	EditorInterface.get_base_control().add_child(_rename_dialog)
+
+
+func _create_rename_multi_file_warning_dialog() -> void:
+	_rename_multi_file_warning_dialog = ConfirmationDialog.new()
+	_rename_multi_file_warning_dialog.title = "Rename Symbol"
+	_rename_multi_file_warning_dialog.ok_button_text = "Rename"
+	_rename_multi_file_warning_dialog.min_size = Vector2i(_rename_warning_dialog_width(), 0)
+	_rename_multi_file_warning_dialog.confirmed.connect(_confirm_multi_file_rename_warning)
+	_rename_multi_file_warning_dialog.canceled.connect(_clear_pending_multi_file_rename)
+	_rename_multi_file_warning_dialog.close_requested.connect(_clear_pending_multi_file_rename)
+
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+
+	var warning_row := HBoxContainer.new()
+	warning_row.add_theme_constant_override("separation", 12)
+	box.add_child(warning_row)
+
+	_rename_multi_file_warning_icon = TextureRect.new()
+	_rename_multi_file_warning_icon.custom_minimum_size = Vector2(64, 64)
+	_rename_multi_file_warning_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_rename_multi_file_warning_icon.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	warning_row.add_child(_rename_multi_file_warning_icon)
+
+	var text_column := VBoxContainer.new()
+	text_column.add_theme_constant_override("separation", 24)
+	text_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	warning_row.add_child(text_column)
+
+	_rename_multi_file_warning_label = Label.new()
+	_rename_multi_file_warning_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_rename_multi_file_warning_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	text_column.add_child(_rename_multi_file_warning_label)
+
+	_rename_multi_file_warning_check_box = CheckBox.new()
+	_rename_multi_file_warning_check_box.text = "Don't show this warning again"
+	text_column.add_child(_rename_multi_file_warning_check_box)
+
+	_rename_multi_file_warning_dialog.add_child(box)
+	EditorInterface.get_base_control().add_child(_rename_multi_file_warning_dialog)
 
 
 func _create_symbol_usage_controller() -> void:
@@ -561,7 +652,7 @@ func _begin_rename() -> void:
 	if _rename_code == null:
 		return
 
-	_rename_script_path = _get_current_script_path()
+	_rename_script_path = _get_current_script_path_for_code(_rename_code)
 	if _rename_script_path.is_empty():
 		print("Rename Symbol: could not resolve current script path.")
 		return
@@ -649,7 +740,11 @@ func _rename_ensure_connection(report_errors: bool = true) -> bool:
 func _rename_try_send_request() -> void:
 	if _rename_queued.is_empty() or not _rename_lsp.is_initialized():
 		return
-	if _rename_lsp.has_pending_kind("prepare_rename") or _rename_lsp.has_pending_kind("rename"):
+	if (
+		_rename_lsp.has_pending_kind("prepare_rename")
+		or _rename_lsp.has_pending_kind("rename")
+		or _rename_lsp.has_pending_kind("rename_references")
+	):
 		return
 
 	_rename_send_open_document_sync_notifications()
@@ -681,9 +776,23 @@ func _rename_send_rename_request() -> void:
 	})
 
 
+func _rename_send_references_fallback_request() -> void:
+	_rename_lsp.send_request("rename_references", "textDocument/references", {
+		"textDocument": {
+			"uri": _rename_queued["uri"],
+		},
+		"position": {
+			"line": _rename_queued["line"],
+			"character": _rename_queued["character"],
+		},
+		"context": {
+			"includeDeclaration": true,
+		},
+	})
+
+
 func _rename_send_open_document_sync_notifications() -> void:
 	var target_uri := str(_rename_queued.get("uri", ""))
-	var synced_target := false
 	var open_script_buffers := _rename_open_script_buffers_by_uri()
 
 	for uri in open_script_buffers:
@@ -695,10 +804,8 @@ func _rename_send_open_document_sync_notifications() -> void:
 
 		var text := _get_code_text(code)
 		_rename_send_text_document_sync_notification(uri_text, text)
-		if uri_text == target_uri:
-			synced_target = true
 
-	if not synced_target and not target_uri.is_empty() and _rename_code != null:
+	if not target_uri.is_empty() and _rename_code != null:
 		var target_text := _get_code_text(_rename_code)
 		_rename_send_text_document_sync_notification(target_uri, target_text)
 
@@ -724,8 +831,61 @@ func _rename_handle_response(response: Dictionary) -> void:
 		_rename_send_rename_request()
 	elif request_kind == "rename":
 		var workspace_edit = message.get("result", {})
-		call_deferred("_rename_apply_workspace_edit", workspace_edit, str(_rename_queued.get("new_name", "")))
+		if _rename_workspace_edit_to_edits_by_uri(workspace_edit).is_empty() and not _rename_queued.is_empty():
+			_rename_send_references_fallback_request()
+			return
+
+		_rename_maybe_confirm_workspace_edit(workspace_edit, str(_rename_queued.get("new_name", "")))
+	elif request_kind == "rename_references":
+		var workspace_edit := SmartRenameWorkspaceEdit.references_to_workspace_edit(
+			message.get("result", []),
+			str(_rename_queued.get("new_name", ""))
+		)
+		_rename_maybe_confirm_workspace_edit(workspace_edit, str(_rename_queued.get("new_name", "")))
 	_rename_queued = {}
+
+
+func _rename_maybe_confirm_workspace_edit(workspace_edit: Variant, new_name: String) -> void:
+	var edits_by_uri := _rename_workspace_edit_to_edits_by_uri(workspace_edit)
+	var file_count := _rename_non_empty_edit_file_count(edits_by_uri)
+	if file_count <= 1 or not _is_rename_multi_file_warning_enabled():
+		call_deferred("_rename_apply_workspace_edit", workspace_edit, new_name)
+		return
+
+	_rename_pending_workspace_edit = workspace_edit
+	_rename_pending_new_name = new_name
+	_rename_multi_file_warning_check_box.button_pressed = false
+	_rename_multi_file_warning_icon.texture = _get_editor_icon([
+		&"NodeWarning",
+		&"StatusWarning",
+		&"Warning",
+	])
+	var warning_dialog_width := _rename_warning_dialog_width()
+	_rename_multi_file_warning_label.custom_minimum_size = Vector2(warning_dialog_width - 160, 112)
+	_rename_multi_file_warning_label.text = (
+		"Rename Symbol will update multiple files.\n"
+		+ "Undo will not work properly for all of them.\n"
+		+ "Godot can only undo the edit in the current open script.\n"
+		+ "\n"
+		+ "To get back to the original name, use Rename Symbol again."
+	)
+	_rename_multi_file_warning_dialog.min_size = Vector2i(warning_dialog_width, 0)
+	_rename_multi_file_warning_dialog.popup_centered_clamped(Vector2i(warning_dialog_width, 260), 0.85)
+
+
+func _confirm_multi_file_rename_warning() -> void:
+	if _rename_multi_file_warning_check_box.button_pressed:
+		_set_rename_multi_file_warning_enabled(false)
+
+	var workspace_edit := _rename_pending_workspace_edit
+	var new_name := _rename_pending_new_name
+	_clear_pending_multi_file_rename()
+	call_deferred("_rename_apply_workspace_edit", workspace_edit, new_name)
+
+
+func _clear_pending_multi_file_rename() -> void:
+	_rename_pending_workspace_edit = null
+	_rename_pending_new_name = ""
 
 
 func _rename_apply_workspace_edit(workspace_edit: Variant, new_name: String = "") -> void:
@@ -752,7 +912,11 @@ func _rename_apply_workspace_edit(workspace_edit: Variant, new_name: String = ""
 		var uri_text := str(uri)
 		if open_script_buffers.has(uri_text):
 			var open_script_buffer: Dictionary = open_script_buffers[uri_text]
-			SmartRenameWorkspaceEdit.apply_text_edits_to_code_edit(open_script_buffer["code"], edits)
+			SmartRenameWorkspaceEdit.apply_text_edits_to_code_edit(
+				open_script_buffer["code"],
+				edits,
+				_should_use_native_rename_undo(edits_by_uri, open_script_buffers, uri_text)
+			)
 			var open_text := _get_code_text(open_script_buffer["code"])
 			_rename_set_script_source_code(open_script_buffer["script"], open_text)
 			var definition_score := _rename_definition_score_for_code(open_script_buffer["code"], edits, new_name)
@@ -795,22 +959,45 @@ func _rename_apply_workspace_edit(workspace_edit: Variant, new_name: String = ""
 func _rename_open_script_buffers_by_uri() -> Dictionary:
 	var buffers_by_uri := {}
 	var script_editor := EditorInterface.get_script_editor()
+	if script_editor == null:
+		return buffers_by_uri
+
 	var scripts: Array = script_editor.get_open_scripts()
+	var code_editor_entries := _rename_open_code_editor_entries(script_editor)
+	var used_editor_indices := {}
+
+	for script_value in scripts:
+		if not script_value is Script:
+			continue
+
+		var script: Script = script_value
+		var script_path := _rename_valid_script_path(script)
+		if script_path.is_empty():
+			continue
+
+		var editor_index := _rename_find_matching_code_editor_index(script, code_editor_entries, used_editor_indices)
+		if editor_index == -1:
+			continue
+
+		used_editor_indices[editor_index] = true
+		var editor_entry: Dictionary = code_editor_entries[editor_index]
+		var code: CodeEdit = editor_entry.get("code", null)
+
+		var uri := _path_to_file_uri(ProjectSettings.globalize_path(script_path))
+		buffers_by_uri[uri] = {
+			"script": script,
+			"code": code,
+		}
+
+	_rename_add_target_open_script_buffer(buffers_by_uri)
+	return buffers_by_uri
+
+
+func _rename_open_code_editor_entries(script_editor: ScriptEditor) -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
 	var editors: Array = script_editor.get_open_script_editors()
-	var count = mini(scripts.size(), editors.size())
 
-	for index in range(count):
-		var script: Script = scripts[index]
-		if script == null:
-			continue
-
-		var script_path := str(script.resource_path)
-		if script_path.is_empty() or script_path.contains("::"):
-			continue
-		if script_path.get_extension() != "gd":
-			continue
-
-		var editor = editors[index]
+	for editor in editors:
 		if editor == null:
 			continue
 
@@ -818,17 +1005,137 @@ func _rename_open_script_buffers_by_uri() -> Dictionary:
 		if not base is CodeEdit:
 			continue
 
-		var uri := _path_to_file_uri(ProjectSettings.globalize_path(script_path))
-		buffers_by_uri[uri] = {
-			"script": script,
+		entries.append({
+			"editor": editor,
 			"code": base,
-		}
+		})
 
-	return buffers_by_uri
+	return entries
+
+
+func _rename_find_matching_code_editor_index(script: Script, entries: Array[Dictionary], used_indices: Dictionary) -> int:
+	var script_source := _rename_normalize_editor_text(script.get_source_code())
+	var disk_source := _rename_read_script_file_text(str(script.resource_path))
+	if not disk_source.is_empty():
+		disk_source = _rename_normalize_editor_text(disk_source)
+
+	var matching_index := -1
+	var matching_count := 0
+	for index in entries.size():
+		if used_indices.has(index):
+			continue
+
+		var entry: Dictionary = entries[index]
+		var code: CodeEdit = entry.get("code", null)
+		if code == null:
+			continue
+
+		var code_text := _rename_normalize_editor_text(_get_code_text(code))
+		var matches_script_source := not script_source.is_empty() and code_text == script_source
+		var matches_disk_source := not disk_source.is_empty() and code_text == disk_source
+		if matches_script_source or matches_disk_source:
+			matching_index = index
+			matching_count += 1
+
+	return matching_index if matching_count == 1 else -1
+
+
+func _rename_add_target_open_script_buffer(buffers_by_uri: Dictionary) -> void:
+	if _rename_code == null or _rename_script_path.is_empty():
+		return
+
+	var script := _rename_script_for_path(_rename_script_path)
+	if script == null:
+		return
+
+	var uri := _path_to_file_uri(ProjectSettings.globalize_path(_rename_script_path))
+	buffers_by_uri[uri] = {
+		"script": script,
+		"code": _rename_code,
+	}
+
+
+func _rename_script_for_path(script_path: String) -> Script:
+	if script_path.is_empty() or script_path.contains("::") or script_path.get_extension() != "gd":
+		return null
+
+	var script_editor := EditorInterface.get_script_editor()
+	if script_editor != null:
+		var current_script: Script = script_editor.get_current_script()
+		if current_script != null and str(current_script.resource_path) == script_path:
+			return current_script
+
+		var scripts: Array = script_editor.get_open_scripts()
+		for script_value in scripts:
+			if not script_value is Script:
+				continue
+
+			var script: Script = script_value
+			if str(script.resource_path) == script_path:
+				return script
+
+	var loaded: Resource = load(script_path)
+	if loaded is Script:
+		return loaded
+
+	return null
+
+
+func _rename_valid_script_path(script: Script) -> String:
+	if script == null:
+		return ""
+
+	var script_path := str(script.resource_path)
+	if script_path.is_empty() or script_path.contains("::"):
+		return ""
+	if script_path.get_extension() != "gd":
+		return ""
+
+	return script_path
+
+
+func _rename_read_script_file_text(script_path: String) -> String:
+	if script_path.is_empty():
+		return ""
+
+	var source_file: FileAccess = FileAccess.open(ProjectSettings.globalize_path(script_path), FileAccess.READ)
+	if source_file == null:
+		return ""
+
+	var text := source_file.get_as_text()
+	source_file = null
+	return text
+
+
+func _rename_normalize_editor_text(text: String) -> String:
+	text = text.replace("\r\n", "\n")
+	while text.ends_with("\n"):
+		text = text.trim_suffix("\n")
+
+	return text
 
 
 func _rename_workspace_edit_to_edits_by_uri(workspace_edit: Variant) -> Dictionary:
 	return SmartRenameWorkspaceEdit.workspace_edit_to_edits_by_uri(workspace_edit)
+
+
+func _rename_non_empty_edit_file_count(edits_by_uri: Dictionary) -> int:
+	var count := 0
+	for uri in edits_by_uri:
+		if edits_by_uri[uri] is Array and not edits_by_uri[uri].is_empty():
+			count += 1
+
+	return count
+
+
+func _should_use_native_rename_undo(edits_by_uri: Dictionary, open_script_buffers: Dictionary, uri: String) -> bool:
+	if edits_by_uri.size() != 1:
+		return false
+	if not open_script_buffers.has(uri):
+		return false
+
+	var edit_uris: Array = edits_by_uri.keys()
+	return str(edit_uris[0]) == uri
 
 
 func _rename_scan_resource_filesystem_sources() -> void:
@@ -1339,6 +1646,9 @@ func _replace_range_in_code(code: CodeEdit, from_line: int, from_col: int, to_li
 
 func _get_current_code_edit() -> CodeEdit:
 	var script_editor := EditorInterface.get_script_editor()
+	if script_editor == null:
+		return null
+
 	var current_editor := script_editor.get_current_editor()
 
 	if current_editor == null:
@@ -1351,8 +1661,26 @@ func _get_current_code_edit() -> CodeEdit:
 	return null
 
 
+func _get_current_script_path_for_code(code: CodeEdit) -> String:
+	var script_editor := EditorInterface.get_script_editor()
+	if script_editor == null:
+		return ""
+
+	var current_editor := script_editor.get_current_editor()
+	if current_editor != null and current_editor.get_base_editor() == code:
+		var current_script: Script = script_editor.get_current_script()
+		if current_script != null:
+			return current_script.resource_path
+
+	return _get_current_script_path()
+
+
 func _get_current_script_path() -> String:
-	var current_script: Script = EditorInterface.get_script_editor().get_current_script()
+	var script_editor := EditorInterface.get_script_editor()
+	if script_editor == null:
+		return ""
+
+	var current_script: Script = script_editor.get_current_script()
 	if current_script != null:
 		return current_script.resource_path
 

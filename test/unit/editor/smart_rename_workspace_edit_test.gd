@@ -36,6 +36,35 @@ func test_workspace_edit_extracts_document_changes_by_uri() -> void:
 	})
 
 
+func test_references_can_be_converted_to_workspace_edit() -> void:
+	var player_uri := "file:///project/player.gd"
+	var enemy_uri := "file:///project/enemy.gd"
+	var player_range := _range(1, 5, 1, 16)
+	var enemy_range := _range(3, 8, 3, 19)
+
+	assert_dict(SmartRenameWorkspaceEdit.references_to_workspace_edit([
+		{
+			"uri": player_uri,
+			"range": player_range,
+		},
+		{
+			"uri": enemy_uri,
+			"range": enemy_range,
+		},
+	], "build_label_2")).is_equal({
+		"changes": {
+			player_uri: [{
+				"range": player_range,
+				"newText": "build_label_2",
+			}],
+			enemy_uri: [{
+				"range": enemy_range,
+				"newText": "build_label_2",
+			}],
+		},
+	})
+
+
 func test_text_edits_are_applied_from_bottom_to_top() -> void:
 	var text := "\n".join([
 		"func build_label() -> String:",
@@ -66,6 +95,27 @@ func test_text_edits_can_update_code_edit_buffer() -> void:
 	assert_str(code.get_text()).is_equal("\n".join([
 		"var first := result",
 		"var second := result",
+	]))
+
+	code.free()
+
+
+func test_text_edits_can_update_code_edit_buffer_as_one_undo_operation() -> void:
+	var code := CodeEdit.new()
+	code.text = "\n".join([
+		"var first := value",
+		"var second := value",
+	])
+
+	SmartRenameWorkspaceEdit.apply_text_edits_to_code_edit(code, [
+		_edit(0, 13, 0, 18, "result"),
+		_edit(1, 14, 1, 19, "result"),
+	], true)
+	code.undo()
+
+	assert_str(code.get_text()).is_equal("\n".join([
+		"var first := value",
+		"var second := value",
 	]))
 
 	code.free()
@@ -115,15 +165,19 @@ func test_save_code_edit_to_script_path_writes_buffer_to_disk() -> void:
 
 func _edit(from_line: int, from_col: int, to_line: int, to_col: int, new_text: String) -> Dictionary:
 	return {
-		"range": {
-			"start": {
-				"line": from_line,
-				"character": from_col,
-			},
-			"end": {
-				"line": to_line,
-				"character": to_col,
-			},
-		},
+		"range": _range(from_line, from_col, to_line, to_col),
 		"newText": new_text,
+	}
+
+
+func _range(from_line: int, from_col: int, to_line: int, to_col: int) -> Dictionary:
+	return {
+		"start": {
+			"line": from_line,
+			"character": from_col,
+		},
+		"end": {
+			"line": to_line,
+			"character": to_col,
+		},
 	}

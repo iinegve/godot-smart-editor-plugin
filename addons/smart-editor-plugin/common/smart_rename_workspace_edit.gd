@@ -24,6 +24,42 @@ static func workspace_edit_to_edits_by_uri(workspace_edit: Variant) -> Dictionar
 	return edits_by_uri
 
 
+static func references_to_workspace_edit(references: Variant, new_text: String) -> Dictionary:
+	var changes := {}
+	if typeof(references) != TYPE_ARRAY or new_text.is_empty():
+		return {}
+
+	for reference in references:
+		if typeof(reference) != TYPE_DICTIONARY:
+			continue
+
+		var uri := str(reference.get("uri", ""))
+		var range_value: Variant = reference.get("range", null)
+		if uri.is_empty() or typeof(range_value) != TYPE_DICTIONARY:
+			continue
+
+		var range_dict: Dictionary = range_value
+		if (
+			typeof(range_dict.get("start", null)) != TYPE_DICTIONARY
+			or typeof(range_dict.get("end", null)) != TYPE_DICTIONARY
+		):
+			continue
+
+		if not changes.has(uri):
+			changes[uri] = []
+		changes[uri].append({
+			"range": range_dict,
+			"newText": new_text,
+		})
+
+	if changes.is_empty():
+		return {}
+
+	return {
+		"changes": changes,
+	}
+
+
 static func apply_text_edits_to_text(text: String, edits: Array) -> String:
 	for edit in sorted_text_edits_desc(edits):
 		if not _is_text_edit(edit):
@@ -42,7 +78,10 @@ static func apply_text_edits_to_text(text: String, edits: Array) -> String:
 	return text
 
 
-static func apply_text_edits_to_code_edit(code: CodeEdit, edits: Array) -> void:
+static func apply_text_edits_to_code_edit(code: CodeEdit, edits: Array, complex_operation: bool = false) -> void:
+	if complex_operation:
+		code.begin_complex_operation()
+
 	for edit in sorted_text_edits_desc(edits):
 		if not _is_text_edit(edit):
 			continue
@@ -58,6 +97,9 @@ static func apply_text_edits_to_code_edit(code: CodeEdit, edits: Array) -> void:
 			int(end["character"]),
 			str(edit["newText"])
 		)
+
+	if complex_operation:
+		code.end_complex_operation()
 
 
 static func sync_script_from_code_edit(script: Script, code: CodeEdit) -> void:

@@ -86,7 +86,7 @@ Smart Editor is developed and tested with Godot `4.6.1`. Other Godot `4.6.x` rel
 
 Smart Editor does not try to be a full semantic refactoring engine. Its refactorings are intentionally lightweight and editor-focused.
 
-- `Rename Symbol` depends on Godot's code analysis service. Undo after a rename with multiple changed locations does not revert the whole rename at once in open files, and it cannot undo changes made to closed files.
+- `Rename Symbol` depends on Godot's code analysis service. Renames that affect one open file can be undone as one editor undo action. Renames that affect multiple files are applied as workspace edits; normal editor undo cannot revert the whole cross-file rename or changes made to closed files.
 - `Call Hierarchy` depends on Godot's code analysis service and groups callers by the enclosing function found in GDScript source text.
 - `Extract Local Variable` and `Inline Variable` operate on recognized GDScript text patterns. They do not perform complete semantic analysis.
 - Smart selection is based on a custom parser for practical editor selection ranges, not Godot's compiler AST. Some unusual syntax can still need more test cases.
