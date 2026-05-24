@@ -66,6 +66,9 @@ jobs:
           rm -rf "$PACKAGE_DIR"
           mkdir -p "$PACKAGE_DIR/addons"
           rsync -a --exclude='media/' addons/smart-editor-plugin "$PACKAGE_DIR/addons/"
+          cp README.md "$PACKAGE_DIR/addons/smart-editor-plugin/README.md"
+          cp SHORTCUTS.md "$PACKAGE_DIR/addons/smart-editor-plugin/SHORTCUTS.md"
+          cp SETTINGS.md "$PACKAGE_DIR/addons/smart-editor-plugin/SETTINGS.md"
 
           PACKAGE_DIR="$PACKAGE_DIR" python3 <<'PY'
           import os

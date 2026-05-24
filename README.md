@@ -1,6 +1,6 @@
 # Smart Editor
 
-Smart Editor is a Godot editor plugin that adds small IDE-style conveniences to the built-in script editor. It focuses on fast selection, local code navigation, call hierarchy, and lightweight refactoring helpers for GDScript.
+Smart Editor is a Godot editor plugin that adds small IDE-style conveniences to the built-in script editor.
 
 ## Demo
 
@@ -12,105 +12,42 @@ Smart Editor is a Godot editor plugin that adds small IDE-style conveniences to 
 - Highlights stripe, a narrow mark strip beside the script editor scrollbar showing usages of the symbol under the caret in the current file.
 - Highlights in the visible editor area for the symbol under the caret.
 - Function boundary guides that draw subtle horizontal lines between functions to make indentation-based code easier to scan.
+- Indent guides that draw subtle vertical lines along block indentation levels.
 - Call Hierarchy, a lazy dockable view that shows callers of the function under the caret.
 - Extract Local Variable for selected expressions.
-- Rename Symbol for the symbol under the caret.
 - Inline Variable for simple local variable declarations.
+- Rename Symbol for the symbol under the caret, including symbols used across multiple files.
 
-## Default Shortcuts
+## Known Limitations
 
-Configurable shortcuts can be changed in `Editor Settings` under `Plugin` -> `Smart Editor`.
+Smart Editor does not try to be a full semantic refactoring engine. Its refactorings are intentionally lightweight and editor-focused.
 
-### Editor Commands
+- `Rename Symbol` depends on Godot's code analysis service. Renames that affect one open file can be undone as one editor undo action. Renames that affect multiple files cannot revert the whole cross-file rename or changes made to closed files.
+- Variable rename requires a variable declaration. Variables that are left without an explicit declaration cannot be renamed.
+- `Call Hierarchy` is a static call-site view and does not follow string-based dynamic calls such as `call("method")` or `Callable(object, "method")`.
+- `Extract Local Variable` and `Inline Variable` operate on recognized GDScript text patterns. They do not perform complete semantic analysis.
+- Smart selection is based on a custom parser for practical editor selection ranges, not Godot's compiler AST. Some unusual syntax can still need more test cases.
+- Highlights are focused on the currently open script, not a project-wide usage view. Occurrences must be fully visible in the editor viewport to be painted; partially clipped symbols may not be highlighted.
 
-- `Expand Selection`: `Meta+D` (`Command+D` on macOS)
-- `Shrink Selection`: `Meta+Shift+D` (`Command+Shift+D` on macOS)
-- `Extract Local Variable`: `Meta+Ctrl+V` (`Command+Control+V` on macOS)
-- `Rename Symbol`: `Meta+Ctrl+R` (`Command+Control+R` on macOS)
-- `Inline Variable`: `Meta+Ctrl+N` (`Command+Control+N` on macOS)
+## Shortcuts
 
-### Call Hierarchy
-
-- `Show Call Hierarchy`: `Ctrl+Alt+H`
-- `Select Call Site`: arrow keys
-- `Go to Selected Call Hierarchy Method`: `F4` or double-click
-- `Return Focus to Script Editor`: `Esc`
-
-The highlights stripe, visible highlights, and function boundary guides update automatically while editing and can be configured in Editor Settings.
+Default shortcuts are listed in [SHORTCUTS.md](SHORTCUTS.md). They can be changed in `Editor Settings` under `Plugin` -> `Smart Editor`.
 
 ## Editor Settings
 
-Settings are available in `Editor Settings` under `Plugin` -> `Smart Editor`.
-
-### Editor
-
-- `Dialog Width`: width used by Smart Editor dialogs.
-
-### Highlights
-
-- `Stripe Highlights Enabled`: show or hide the right-side highlights stripe.
-- `In-Editor Highlights Enabled`: show or hide visible usage highlights.
-- `Highlight Color`: background color for highlighted usages.
-- `Current Highlight Color`: background color for the current usage.
-- `Current Outline Color`: outline color for the current usage.
-
-### Call Hierarchy
-
-- `Enabled`: enable or disable the call hierarchy shortcut and dock.
-- `Tree Font Size`: font size used in the call hierarchy tree.
-- `Max Nodes`: maximum number of hierarchy nodes to load.
-
-### Function Boundary Guides
-
-- `Guide Color`: color for function separator and indent guide lines.
-- `Show Function Separator Guides`: show or hide horizontal function separator lines.
-- `Show Indent Guides`: show or hide vertical block indentation guide lines.
+Editor settings are listed in [SETTINGS.md](SETTINGS.md). They are available in `Editor Settings` under `Plugin` -> `Smart Editor`.
 
 ## Installation
 
 From the Godot Asset Library, install the addon into your project and enable `Smart Editor` in `Project` -> `Project Settings` -> `Plugins`.
 
-For manual installation, copy this folder into your project:
-
-```text
-addons/smart-editor-plugin/
-```
+For manual installation, download the latest release zip from [GitHub Releases](https://github.com/iinegve/godot-smart-editor-plugin/releases), then import that zip through Godot's `AssetLib` tab.
 
 Then enable `Smart Editor` from the Plugins tab.
 
 ## Compatibility
 
 Smart Editor is developed and tested with Godot `4.6.1`. Other Godot `4.6.x` releases may work, but `4.6.1` is the supported version for the first Asset Library release.
-
-## Known Limitations
-
-Smart Editor does not try to be a full semantic refactoring engine. Its refactorings are intentionally lightweight and editor-focused.
-
-- `Rename Symbol` depends on Godot's code analysis service. Renames that affect one open file can be undone as one editor undo action. Renames that affect multiple files are applied as workspace edits; normal editor undo cannot revert the whole cross-file rename or changes made to closed files.
-- `Call Hierarchy` depends on Godot's code analysis service and groups callers by the enclosing function found in GDScript source text.
-- `Extract Local Variable` and `Inline Variable` operate on recognized GDScript text patterns. They do not perform complete semantic analysis.
-- Smart selection is based on a custom parser for practical editor selection ranges, not Godot's compiler AST. Some unusual syntax can still need more test cases.
-- Highlights are focused on the currently open script, not a project-wide usage view.
-
-## Development
-
-This repository is also the development project for the plugin. It includes GdUnit tests and helper addons used while building Smart Editor. The Asset Library package is controlled by `.gitattributes` and only includes `addons/smart-editor-plugin/`, so development-only files stay in Git without being installed into user projects.
-
-Run the unit tests with:
-
-```bash
-'/Applications/Godot.app/Contents/MacOS/Godot' --path . -s -d res://addons/gdUnit4/bin/GdUnitCmdTool.gd --ignoreHeadlessMode -a res://test/unit
-```
-
-To inspect the same addon-only archive shape that Asset Library users receive, run this after committing release changes:
-
-```bash
-git archive --format=zip --output smart-editor-plugin.zip HEAD
-```
-
-### Release Automation
-
-Pushing to `main` starts the release workflow. It increments the patch/build number from the highest existing `vX.Y.Z` tag, copies the addon into a temporary package directory, injects the generated version into the packaged `plugin.cfg`, and creates a GitHub release with an explicitly pushed next tag. The workflow expects at least one seed tag to exist.
 
 ## License
 
