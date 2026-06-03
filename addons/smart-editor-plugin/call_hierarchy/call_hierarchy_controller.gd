@@ -592,7 +592,7 @@ func _try_send_queued_requests() -> void:
 
 	while not _queued_requests.is_empty():
 		var request: Dictionary = _queued_requests.pop_front()
-		_send_document_sync_notification(request["uri"])
+		_send_open_document_sync_notifications(str(request["uri"]))
 
 		var context := {
 			"kind": "references",
@@ -620,6 +620,129 @@ func _try_send_queued_requests() -> void:
 
 func _send_document_sync_notification(uri: String) -> void:
 	_lsp.sync_document(uri, _get_text_for_uri(uri))
+
+
+func _send_open_document_sync_notifications(target_uri: String) -> void:
+	var synced_uris := {}
+	var code_edits_by_uri := _open_script_code_edits_by_uri()
+	for uri in code_edits_by_uri:
+		var uri_text := str(uri)
+		var code: CodeEdit = code_edits_by_uri[uri_text]
+		_lsp.sync_document(uri_text, _get_code_text(code))
+		synced_uris[uri_text] = true
+
+	if not target_uri.is_empty() and not synced_uris.has(target_uri):
+		_send_document_sync_notification(target_uri)
+
+
+func _open_script_code_edits_by_uri() -> Dictionary:
+	var code_edits_by_uri := {}
+	var script_editor := EditorInterface.get_script_editor()
+	if script_editor == null:
+		return code_edits_by_uri
+
+	var scripts: Array = script_editor.get_open_scripts()
+	var code_editor_entries := _open_code_editor_entries(script_editor)
+	var used_editor_indices := {}
+
+	for script_value in scripts:
+		if not script_value is Script:
+			continue
+
+		var script: Script = script_value
+		var script_path := _valid_script_path(script)
+		if script_path.is_empty():
+			continue
+
+		var editor_index := _find_matching_code_editor_index(script, code_editor_entries, used_editor_indices)
+		if editor_index == -1:
+			continue
+
+		used_editor_indices[editor_index] = true
+		var editor_entry: Dictionary = code_editor_entries[editor_index]
+		var code: CodeEdit = editor_entry.get("code", null)
+		if code == null:
+			continue
+
+		var uri := _path_to_file_uri(ProjectSettings.globalize_path(script_path))
+		code_edits_by_uri[uri] = code
+
+	if _code != null and not _current_uri.is_empty():
+		code_edits_by_uri[_current_uri] = _code
+
+	return code_edits_by_uri
+
+
+func _open_code_editor_entries(script_editor: ScriptEditor) -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	var editors: Array = script_editor.get_open_script_editors()
+
+	for editor in editors:
+		if editor == null:
+			continue
+
+		var base: Variant = editor.get_base_editor()
+		if not base is CodeEdit:
+			continue
+
+		entries.append({
+			"code": base,
+		})
+
+	return entries
+
+
+func _find_matching_code_editor_index(script: Script, entries: Array[Dictionary], used_indices: Dictionary) -> int:
+	var script_source := _normalize_editor_text(script.get_source_code())
+	var disk_source := _read_script_file_text(str(script.resource_path))
+	if not disk_source.is_empty():
+		disk_source = _normalize_editor_text(disk_source)
+
+	var matching_index := -1
+	var matching_count := 0
+	for index in entries.size():
+		if used_indices.has(index):
+			continue
+
+		var entry: Dictionary = entries[index]
+		var code: CodeEdit = entry.get("code", null)
+		if code == null:
+			continue
+
+		var code_text := _normalize_editor_text(_get_code_text(code))
+		var matches_script_source := not script_source.is_empty() and code_text == script_source
+		var matches_disk_source := not disk_source.is_empty() and code_text == disk_source
+		if matches_script_source or matches_disk_source:
+			matching_index = index
+			matching_count += 1
+
+	return matching_index if matching_count == 1 else -1
+
+
+func _valid_script_path(script: Script) -> String:
+	if script == null:
+		return ""
+
+	var script_path := str(script.resource_path)
+	if script_path.is_empty() or script_path.contains("::") or script_path.get_extension() != "gd":
+		return ""
+
+	return script_path
+
+
+func _normalize_editor_text(text: String) -> String:
+	return text.replace("\r\n", "\n").strip_edges()
+
+
+func _read_script_file_text(script_path: String) -> String:
+	if script_path.is_empty():
+		return ""
+
+	var file := FileAccess.open(script_path, FileAccess.READ)
+	if file == null:
+		return ""
+
+	return file.get_as_text()
 
 
 func _handle_response(response: Dictionary) -> void:
