@@ -65,11 +65,14 @@ const REMOVED_SETTING_RENAME_PROFILE_LOGS := SETTINGS_PREFIX + &"rename_profile_
 const HOST := "127.0.0.1"
 const PORT := 6005
 const IDENTIFIER_CHARS := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+const IDENTIFIER_DIALOG_WIDTH := 560
+const IDENTIFIER_DIALOG_HEIGHT := 150
 const RENAME_PREWARM_RETRY_USEC := 1_000_000
 
 var _extract_dialog: ConfirmationDialog
 var _extract_name_edit: LineEdit
 var _extract_prompt_label: Label
+var _extract_error_label: Label
 var _extract_code: CodeEdit
 var _extract_selection_range := {}
 var _extract_expression := ""
@@ -77,6 +80,7 @@ var _extract_expression := ""
 var _rename_dialog: ConfirmationDialog
 var _rename_name_edit: LineEdit
 var _rename_prompt_label: Label
+var _rename_error_label: Label
 var _rename_multi_file_warning_dialog: ConfirmationDialog
 var _rename_multi_file_warning_icon: TextureRect
 var _rename_multi_file_warning_label: Label
@@ -111,7 +115,6 @@ func _enter_tree() -> void:
 	_init_settings()
 	_configure_lsp_clients()
 	_create_extract_dialog()
-	_create_rename_dialog()
 	_create_rename_multi_file_warning_dialog()
 	_create_symbol_usage_controller()
 	_rename_prewarm_pending = true
@@ -140,12 +143,9 @@ func _configure_lsp_clients() -> void:
 
 
 func _exit_tree() -> void:
-	if _extract_dialog != null:
-		_extract_dialog.queue_free()
-	if _rename_dialog != null:
-		_rename_dialog.queue_free()
-	if _rename_multi_file_warning_dialog != null:
-		_rename_multi_file_warning_dialog.queue_free()
+	_free_dialog(_extract_dialog)
+	_dispose_rename_dialog()
+	_free_dialog(_rename_multi_file_warning_dialog)
 	if _symbol_usage_controller != null:
 		_symbol_usage_controller.queue_free()
 	if _function_boundary_guides_controller != null:
@@ -354,6 +354,10 @@ func _dialog_width() -> int:
 	return int(_get_plugin_setting(SETTING_DIALOG_WIDTH, 420))
 
 
+func _identifier_dialog_width() -> int:
+	return maxi(_dialog_width(), IDENTIFIER_DIALOG_WIDTH)
+
+
 func _rename_warning_dialog_width() -> int:
 	return maxi(_dialog_width() * 2, 760)
 
@@ -380,7 +384,7 @@ func _create_extract_dialog() -> void:
 	_extract_dialog = ConfirmationDialog.new()
 	_extract_dialog.title = "Extract Local Variable"
 	_extract_dialog.ok_button_text = "Extract"
-	_extract_dialog.min_size = Vector2i(_dialog_width(), 0)
+	_extract_dialog.min_size = Vector2i(_identifier_dialog_width(), 0)
 	_extract_dialog.confirmed.connect(_apply_extract)
 
 	var box := VBoxContainer.new()
@@ -391,19 +395,28 @@ func _create_extract_dialog() -> void:
 
 	_extract_name_edit = LineEdit.new()
 	_extract_name_edit.placeholder_text = "Variable name"
+	_extract_name_edit.keep_editing_on_text_submit = true
 	_extract_name_edit.text_submitted.connect(_apply_extract_from_submit)
+	_extract_name_edit.text_changed.connect(_on_extract_name_changed)
 	box.add_child(_extract_name_edit)
+
+	_extract_error_label = _make_identifier_error_label()
+	box.add_child(_extract_error_label)
 
 	_extract_dialog.add_child(box)
 	EditorInterface.get_base_control().add_child(_extract_dialog)
 
 
-func _create_rename_dialog() -> void:
+func _create_rename_dialog() -> bool:
+	_dispose_rename_dialog()
+
 	_rename_dialog = ConfirmationDialog.new()
 	_rename_dialog.title = "Rename Symbol"
 	_rename_dialog.ok_button_text = "Rename"
-	_rename_dialog.min_size = Vector2i(_dialog_width(), 0)
+	_rename_dialog.min_size = Vector2i(_identifier_dialog_width(), 0)
 	_rename_dialog.confirmed.connect(_apply_rename)
+	_rename_dialog.canceled.connect(_cancel_rename_dialog)
+	_rename_dialog.close_requested.connect(_cancel_rename_dialog)
 
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
@@ -413,11 +426,71 @@ func _create_rename_dialog() -> void:
 
 	_rename_name_edit = LineEdit.new()
 	_rename_name_edit.placeholder_text = "New identifier"
+	_rename_name_edit.keep_editing_on_text_submit = true
 	_rename_name_edit.text_submitted.connect(_apply_rename_from_submit)
+	_rename_name_edit.text_changed.connect(_on_rename_name_changed)
 	box.add_child(_rename_name_edit)
+
+	_rename_error_label = _make_identifier_error_label()
+	box.add_child(_rename_error_label)
 
 	_rename_dialog.add_child(box)
 	EditorInterface.get_base_control().add_child(_rename_dialog)
+	return true
+
+
+func _ensure_extract_dialog() -> bool:
+	if (
+		_extract_dialog != null
+		and is_instance_valid(_extract_dialog)
+		and _extract_prompt_label != null
+		and is_instance_valid(_extract_prompt_label)
+		and _extract_name_edit != null
+		and is_instance_valid(_extract_name_edit)
+		and _extract_error_label != null
+		and is_instance_valid(_extract_error_label)
+	):
+		return true
+
+	_free_dialog(_extract_dialog)
+	_extract_dialog = null
+	_extract_prompt_label = null
+	_extract_name_edit = null
+	_extract_error_label = null
+	_create_extract_dialog()
+	return _extract_dialog != null and is_instance_valid(_extract_dialog)
+
+
+func _free_dialog(dialog: Window) -> void:
+	if dialog == null or not is_instance_valid(dialog):
+		return
+
+	var parent: Node = dialog.get_parent()
+	if parent != null:
+		parent.remove_child(dialog)
+	dialog.queue_free()
+
+
+func _dispose_rename_dialog() -> void:
+	var dialog: Window = _rename_dialog
+	_rename_dialog = null
+	_rename_prompt_label = null
+	_rename_name_edit = null
+	_rename_error_label = null
+	_free_dialog(dialog)
+
+
+func _cancel_rename_dialog() -> void:
+	_dispose_rename_dialog()
+	_focus_code_edit(_rename_code)
+
+
+func _make_identifier_error_label() -> Label:
+	var label := Label.new()
+	label.visible = false
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.add_theme_color_override("font_color", Color(1.0, 0.35, 0.35))
+	return label
 
 
 func _create_rename_multi_file_warning_dialog() -> void:
@@ -550,6 +623,10 @@ func _append_candidate(candidates: Array[Dictionary], candidate: Dictionary) -> 
 
 
 func _begin_extract() -> void:
+	if not _ensure_extract_dialog():
+		print("Extract Local Variable: could not create dialog.")
+		return
+
 	_extract_code = _get_current_code_edit()
 	if _extract_code == null:
 		return
@@ -571,12 +648,18 @@ func _begin_extract() -> void:
 	_extract_prompt_label.text = "Extract selected expression into local variable:"
 	_extract_name_edit.text = _suggest_extract_name(_extract_expression)
 	_extract_name_edit.select_all()
-	_extract_dialog.min_size = Vector2i(_dialog_width(), 0)
-	_extract_dialog.popup_centered(Vector2i(_dialog_width(), 120))
+	_refresh_extract_identifier_validation()
+	_extract_dialog.min_size = Vector2i(_identifier_dialog_width(), 0)
+	_extract_dialog.popup_centered(Vector2i(_identifier_dialog_width(), IDENTIFIER_DIALOG_HEIGHT))
+	call_deferred("_refresh_extract_identifier_validation")
 	_extract_name_edit.grab_focus()
 
 
 func _apply_extract_from_submit(_new_text: String) -> void:
+	if not _refresh_extract_identifier_validation():
+		_extract_name_edit.grab_focus()
+		return
+
 	_extract_dialog.hide()
 	_apply_extract()
 
@@ -586,8 +669,10 @@ func _apply_extract() -> void:
 		return
 
 	var variable_name := _extract_name_edit.text.strip_edges()
-	if not _is_valid_identifier(variable_name):
-		print("Extract Local Variable: '%s' is not a valid identifier." % variable_name)
+	var validation_error := _identifier_validation_error(variable_name)
+	if not validation_error.is_empty():
+		print("Extract Local Variable: %s" % validation_error)
+		_refresh_extract_identifier_validation()
 		return
 
 	var line_index: int = _extract_selection_range["from_line"]
@@ -666,27 +751,46 @@ func _begin_rename() -> void:
 	_rename_symbol_line = symbol_range["line"]
 	_rename_symbol_column = symbol_range["column"]
 
+	if not _create_rename_dialog():
+		print("Rename Symbol: could not create dialog.")
+		return
+
 	_rename_prompt_label.text = "Rename '%s' to:" % _rename_symbol
 	_rename_name_edit.text = _rename_symbol
 	_rename_name_edit.select_all()
-	_rename_dialog.min_size = Vector2i(_dialog_width(), 0)
-	_rename_dialog.popup_centered(Vector2i(_dialog_width(), 120))
+	_refresh_rename_identifier_validation()
+	_rename_dialog.min_size = Vector2i(_identifier_dialog_width(), 0)
+	_rename_dialog.popup_centered(Vector2i(_identifier_dialog_width(), IDENTIFIER_DIALOG_HEIGHT))
+	call_deferred("_refresh_rename_identifier_validation")
 	_rename_name_edit.grab_focus()
 
 
 func _apply_rename_from_submit(_new_text: String) -> void:
-	_rename_dialog.hide()
+	if not _refresh_rename_identifier_validation():
+		_rename_name_edit.call_deferred("grab_focus")
+		return
+
 	_apply_rename()
 
 
 func _apply_rename() -> void:
-	var replacement := _rename_name_edit.text.strip_edges()
-	if replacement == _rename_symbol:
-		return
-	if not _is_valid_identifier(replacement):
-		print("Rename Symbol: '%s' is not a valid identifier." % replacement)
+	if _rename_name_edit == null:
 		return
 
+	var replacement := _rename_name_edit.text.strip_edges()
+	if replacement == _rename_symbol:
+		_dispose_rename_dialog()
+		_focus_code_edit(_rename_code)
+		return
+
+	var validation_error := _identifier_validation_error(replacement, _rename_symbol)
+	if not validation_error.is_empty():
+		print("Rename Symbol: %s" % validation_error)
+		_refresh_rename_identifier_validation()
+		_rename_name_edit.call_deferred("grab_focus")
+		return
+
+	_dispose_rename_dialog()
 	_rename_queued = {
 		"uri": _path_to_file_uri(ProjectSettings.globalize_path(_rename_script_path)),
 		"line": _rename_symbol_line,
@@ -696,6 +800,51 @@ func _apply_rename() -> void:
 
 	if _rename_ensure_connection():
 		_rename_try_send_request()
+
+
+func _on_extract_name_changed(_new_text: String) -> void:
+	_refresh_extract_identifier_validation()
+
+
+func _on_rename_name_changed(_new_text: String) -> void:
+	_refresh_rename_identifier_validation()
+
+
+func _refresh_extract_identifier_validation() -> bool:
+	if _extract_name_edit == null:
+		return false
+
+	var validation_error := _identifier_validation_error(_extract_name_edit.text)
+	_set_identifier_validation_state(_extract_dialog, _extract_error_label, validation_error, validation_error)
+	return validation_error.is_empty()
+
+
+func _refresh_rename_identifier_validation() -> bool:
+	if _rename_name_edit == null:
+		return false
+
+	var validation_error := _identifier_validation_error(_rename_name_edit.text, _rename_symbol)
+	_set_identifier_validation_state(_rename_dialog, _rename_error_label, validation_error, validation_error)
+	return validation_error.is_empty()
+
+
+func _set_identifier_validation_state(
+	dialog: ConfirmationDialog,
+	error_label: Label,
+	validation_error: String,
+	visible_error: String
+) -> void:
+	if error_label != null:
+		error_label.text = visible_error
+		error_label.visible = not visible_error.is_empty()
+
+	if dialog != null:
+		dialog.get_ok_button().disabled = not validation_error.is_empty()
+
+
+func _focus_code_edit(code: CodeEdit) -> void:
+	if code != null and is_instance_valid(code):
+		code.call_deferred("grab_focus")
 
 
 func _rename_process_connection() -> void:
@@ -949,8 +1098,6 @@ func _rename_apply_workspace_edit(workspace_edit: Variant, new_name: String = ""
 		_rename_reload_script_resource(open_script)
 		_rename_refresh_script_editor_state(open_script)
 		_rename_send_text_document_sync_notification(str(open_item["uri"]), str(open_item["text"]))
-		if _rename_save_open_script_buffer(open_script_buffer):
-			disk_files_changed = true
 
 	if disk_files_changed:
 		_rename_scan_resource_filesystem_sources()
@@ -1192,20 +1339,6 @@ func _rename_sync_script_resource_for_uri(uri: String, text: String) -> void:
 		SmartRenameWorkspaceEdit.sync_script_from_text(script, text)
 		_rename_refresh_script_editor_state(script)
 		return
-
-
-func _rename_save_open_script_buffer(open_script_buffer: Dictionary) -> bool:
-	var script: Script = open_script_buffer.get("script", null)
-	var code: CodeEdit = open_script_buffer.get("code", null)
-	if script == null or code == null:
-		return false
-
-	var script_path := str(script.resource_path)
-	if not SmartRenameWorkspaceEdit.save_code_edit_to_script_path(script, code):
-		print("Rename Symbol: could not save %s." % script_path)
-		return false
-
-	return true
 
 
 func _file_uri_to_path(uri: String) -> String:
@@ -1779,18 +1912,26 @@ func _is_member_access_at(code: CodeEdit, line_index: int, column: int) -> bool:
 
 
 func _is_valid_identifier(value: String) -> bool:
-	if value.is_empty():
-		return false
+	return _identifier_validation_error(value).is_empty()
 
-	var first := value[0]
+
+func _identifier_validation_error(value: String, _current_name: String = "") -> String:
+	var trimmed := value.strip_edges()
+	if trimmed.is_empty():
+		return "Name is required."
+
+	var first := trimmed[0]
 	if not _is_identifier_start_char(first):
-		return false
+		return "Name must start with a letter or underscore."
 
-	for col in range(1, value.length()):
-		if not _is_identifier_char(value[col]):
-			return false
+	for col in range(1, trimmed.length()):
+		if not _is_identifier_char(trimmed[col]):
+			return "Name can only contain letters, digits, and underscores."
 
-	return true
+	if SymbolUsageModel.is_language_symbol(trimmed):
+		return "'%s' is reserved by GDScript." % trimmed
+
+	return ""
 
 
 func _is_identifier_start_char(ch: String) -> bool:

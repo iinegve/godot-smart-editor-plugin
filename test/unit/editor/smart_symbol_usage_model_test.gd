@@ -55,6 +55,13 @@ func test_symbol_range_under_caret_returns_empty_for_language_keywords() -> void
 	assert_dict(SymbolUsageModel.symbol_range_in_line("@export var health := 10", 0, 3)).is_empty()
 
 
+func test_is_language_symbol_exposes_reserved_words_and_builtin_types() -> void:
+	assert_bool(SymbolUsageModel.is_language_symbol("func")).is_true()
+	assert_bool(SymbolUsageModel.is_language_symbol("var")).is_true()
+	assert_bool(SymbolUsageModel.is_language_symbol("int")).is_true()
+	assert_bool(SymbolUsageModel.is_language_symbol("player_health")).is_false()
+
+
 func test_symbol_range_under_caret_returns_empty_inside_comments_and_strings() -> void:
 	assert_dict(SymbolUsageModel.symbol_range_in_line("var key := \"to_col\"", 0, 13)).is_empty()
 	assert_dict(SymbolUsageModel.symbol_range_in_line("# to_col in comment", 0, 4)).is_empty()

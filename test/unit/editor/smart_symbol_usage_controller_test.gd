@@ -15,7 +15,7 @@ class QueuingSymbolUsageController:
 		return true
 
 
-	func _try_send_references_request() -> void:
+	func _try_send_references_request122() -> void:
 		pass
 
 

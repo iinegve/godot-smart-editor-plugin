@@ -114,7 +114,7 @@ const LANGUAGE_SYMBOLS := {
 
 static func symbol_range_in_line(line: String, line_index: int, caret_column: int) -> Dictionary:
 	var symbol_range := _identifier_range_at_or_before_column(line, line_index, caret_column)
-	if symbol_range.is_empty() or _is_language_symbol(symbol_range["symbol"]):
+	if symbol_range.is_empty() or is_language_symbol(symbol_range["symbol"]):
 		return {}
 
 	return symbol_range
@@ -157,7 +157,7 @@ static func identifier_references_for_uri(references: Variant, uri: String, text
 
 
 static func is_identifier_reference_in_text(text: String, reference: Dictionary, symbol: String) -> bool:
-	if symbol.is_empty() or _is_language_symbol(symbol):
+	if symbol.is_empty() or is_language_symbol(symbol):
 		return false
 	if int(reference.get("line", -1)) != int(reference.get("end_line", -2)):
 		return false
@@ -186,7 +186,7 @@ static func is_identifier_reference_in_text(text: String, reference: Dictionary,
 
 static func references_for_symbol_in_text(text: String, symbol: String) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	if symbol.is_empty() or not _is_identifier_start_char(symbol[0]) or _is_language_symbol(symbol):
+	if symbol.is_empty() or not _is_identifier_start_char(symbol[0]) or is_language_symbol(symbol):
 		return result
 
 	var lines := text.split("\n", true)
@@ -434,5 +434,5 @@ static func _is_identifier_char(ch: String) -> bool:
 	return IDENTIFIER_CHARS.contains(ch)
 
 
-static func _is_language_symbol(symbol: String) -> bool:
+static func is_language_symbol(symbol: String) -> bool:
 	return LANGUAGE_SYMBOLS.has(symbol)
