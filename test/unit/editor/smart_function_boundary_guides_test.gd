@@ -91,50 +91,34 @@ func test_multiline_function_signature_boundary_uses_body_end() -> void:
 	])
 
 
-func test_guide_y_uses_middle_of_following_blank_line() -> void:
-	var end_line_rect := Rect2(0, 20, 100, 12)
-	var following_line_rect := Rect2(0, 32, 100, 12)
-
-	assert_float(FunctionBoundaryGuides.guide_y_for_gap_rects(end_line_rect, following_line_rect, following_line_rect, true)).is_equal(38.0)
-
-
-func test_guide_y_uses_middle_of_multiple_following_blank_lines() -> void:
-	var end_line_rect := Rect2(0, 20, 100, 12)
-	var first_blank_line_rect := Rect2(0, 32, 100, 12)
-	var last_blank_line_rect := Rect2(0, 44, 100, 12)
-
-	assert_float(FunctionBoundaryGuides.guide_y_for_gap_rects(end_line_rect, first_blank_line_rect, last_blank_line_rect, true)).is_equal(44.0)
-
-
-func test_guide_y_uses_end_of_function_line_without_following_blank_line() -> void:
-	var end_line_rect := Rect2(0, 20, 100, 12)
-
-	assert_float(FunctionBoundaryGuides.guide_y_for_gap_rects(end_line_rect, Rect2(), Rect2(), false)).is_equal(32.0)
-
-
-func test_leading_function_guide_y_uses_middle_of_blank_gap() -> void:
+func test_function_separator_guide_y_uses_middle_of_single_blank_line() -> void:
 	var previous_line_rect := Rect2(0, 20, 100, 12)
-	var first_blank_line_rect := Rect2(0, 32, 100, 12)
-	var last_blank_line_rect := Rect2(0, 44, 100, 12)
-	var header_line_rect := Rect2(0, 56, 100, 12)
+	var header_line_rect := Rect2(0, 44, 100, 12)
 
-	assert_float(FunctionBoundaryGuides.leading_function_guide_y(
+	assert_float(FunctionBoundaryGuides.function_separator_guide_y(
 		previous_line_rect,
-		first_blank_line_rect,
-		last_blank_line_rect,
 		header_line_rect,
 		true
-	)).is_equal(44.0)
+	)).is_equal(38.0)
 
 
-func test_leading_function_guide_y_uses_middle_between_adjacent_lines() -> void:
+func test_function_separator_guide_y_stays_above_function_with_multiple_blank_lines() -> void:
+	var previous_line_rect := Rect2(0, 20, 100, 12)
+	var header_line_rect := Rect2(0, 56, 100, 12)
+
+	assert_float(FunctionBoundaryGuides.function_separator_guide_y(
+		previous_line_rect,
+		header_line_rect,
+		true
+	)).is_equal(50.0)
+
+
+func test_function_separator_guide_y_uses_middle_between_adjacent_lines() -> void:
 	var previous_line_rect := Rect2(0, 20, 100, 12)
 	var header_line_rect := Rect2(0, 32, 100, 12)
 
-	assert_float(FunctionBoundaryGuides.leading_function_guide_y(
+	assert_float(FunctionBoundaryGuides.function_separator_guide_y(
 		previous_line_rect,
-		Rect2(),
-		Rect2(),
 		header_line_rect,
 		false
 	)).is_equal(32.0)
@@ -152,30 +136,6 @@ func test_line_rect_from_scroll_position_is_independent_from_horizontal_scroll()
 		6.0,
 		300.0
 	)).is_equal(Rect2(0, 56, 300, 20))
-
-
-func test_folded_function_guide_y_uses_blank_gap_when_visible() -> void:
-	var header_line_rect := Rect2(0, 20, 100, 12)
-	var first_blank_line_rect := Rect2(0, 32, 100, 12)
-	var last_blank_line_rect := Rect2(0, 44, 100, 12)
-
-	assert_float(FunctionBoundaryGuides.guide_y_for_folded_function_rects(
-		header_line_rect,
-		first_blank_line_rect,
-		last_blank_line_rect,
-		true
-	)).is_equal(44.0)
-
-
-func test_folded_function_guide_y_falls_back_to_header_line_bottom() -> void:
-	var header_line_rect := Rect2(0, 20, 100, 12)
-
-	assert_float(FunctionBoundaryGuides.guide_y_for_folded_function_rects(
-		header_line_rect,
-		Rect2(),
-		Rect2(),
-		false
-	)).is_equal(32.0)
 
 
 func test_folded_lines_signature_is_stable_for_same_lines() -> void:
