@@ -1,7 +1,7 @@
 @tool
 extends Node
 
-const FunctionBoundaryGuides := preload("res://addons/smart-editor-plugin/smart_editor/smart_function_boundary_guides.gd")
+const FunctionBoundaryGuides := preload("res://addons/smart-editor-plugin/features/function_boundary_guides/smart_function_boundary_guides.gd")
 
 var _function_separator_guides_enabled_setting: StringName = &""
 var _indent_guides_enabled_setting: StringName = &""

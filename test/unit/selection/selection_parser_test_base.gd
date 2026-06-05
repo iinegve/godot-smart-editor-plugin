@@ -1,7 +1,7 @@
 extends GdUnitTestSuite
 
-const SelectionParser := preload("res://addons/smart-editor-plugin/smart_editor/gdscript_selection_parser.gd")
-const SmartSelectionRange := preload("res://addons/smart-editor-plugin/smart_editor/smart_selection_range.gd")
+const SelectionParser := preload("res://addons/smart-editor-plugin/features/expand_shrink_selection/gdscript_selection_parser.gd")
+const SmartSelectionRange := preload("res://addons/smart-editor-plugin/common/smart_selection_range.gd")
 
 
 func _assert_expansions(test_case: Dictionary) -> void:

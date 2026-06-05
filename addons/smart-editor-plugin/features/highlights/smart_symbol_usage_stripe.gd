@@ -3,7 +3,7 @@ extends Control
 
 signal usage_clicked(reference: Dictionary)
 
-const SymbolUsageModel := preload("res://addons/smart-editor-plugin/smart_editor/smart_symbol_usage_model.gd")
+const SymbolUsageModel := preload("res://addons/smart-editor-plugin/common/smart_symbol_usage_model.gd")
 const STRIPE_WIDTH := 8.0
 const MARK_HEIGHT := 3.0
 const CURRENT_MARK_HEIGHT := 5.0

@@ -1,59 +1,48 @@
 extends GdUnitTestSuite
 
-const SmartEditorController := preload("res://addons/smart-editor-plugin/smart_editor/smart_editor_controller.gd")
+const LocalVariableInliningUseCase := preload("res://addons/smart-editor-plugin/features/local_variable_inlining/use_case.gd")
 
 
 func test_parse_declaration_expression_supports_typed_and_inferred_vars() -> void:
-	var controller := SmartEditorController.new()
+	var use_case := LocalVariableInliningUseCase.new()
 
 	var plain := "\tvar inline_candidate = target.build_label(\"plain\")"
 	var typed := "\tvar inline_candidate: String = target.build_label(\"typed\")"
 	var inferred := "\tvar inline_candidate := target.build_label(\"inferred\")"
 
-	assert_str(controller._parse_declaration_expression(plain, "inline_candidate", plain.find("inline_candidate"))).is_equal("target.build_label(\"plain\")")
-	assert_str(controller._parse_declaration_expression(typed, "inline_candidate", typed.find("inline_candidate"))).is_equal("target.build_label(\"typed\")")
-	assert_str(controller._parse_declaration_expression(inferred, "inline_candidate", inferred.find("inline_candidate"))).is_equal("target.build_label(\"inferred\")")
-
-	controller.free()
+	assert_str(use_case.parse_declaration_expression(plain, "inline_candidate", plain.find("inline_candidate"))).is_equal("target.build_label(\"plain\")")
+	assert_str(use_case.parse_declaration_expression(typed, "inline_candidate", typed.find("inline_candidate"))).is_equal("target.build_label(\"typed\")")
+	assert_str(use_case.parse_declaration_expression(inferred, "inline_candidate", inferred.find("inline_candidate"))).is_equal("target.build_label(\"inferred\")")
 
 
 func test_inline_can_start_from_usage_when_lsp_references_include_declaration() -> void:
-	var controller := SmartEditorController.new()
-	var code := CodeEdit.new()
+	var use_case := LocalVariableInliningUseCase.new()
 	var uri := "file:///project/demo.gd"
-	code.text = "\n".join([
+	var text := "\n".join([
 		"func demo() -> void:",
 		"\tvar value: int = source + 1",
 		"\tprint(value)",
 		"\treturn value",
 	])
-	controller._inline_code = code
-	controller._inline_uri = uri
-	controller._inline_symbol = "value"
-	controller._inline_symbol_line = 2
-	controller._inline_symbol_column = code.get_line(2).find("value")
 
-	controller._inline_apply_from_references([
-		_lsp_reference(uri, 2, code.get_line(2).find("value"), "value"),
-		_lsp_reference(uri, 1, code.get_line(1).find("value"), "value"),
-		_lsp_reference(uri, 3, code.get_line(3).find("value"), "value"),
+	var plan := use_case.build_inline_plan(text, uri, "value", 2, _line(text, 2).find("value"), [
+		_lsp_reference(uri, 2, _line(text, 2).find("value"), "value"),
+		_lsp_reference(uri, 1, _line(text, 1).find("value"), "value"),
+		_lsp_reference(uri, 3, _line(text, 3).find("value"), "value"),
 	])
 
-	assert_str(code.get_text()).is_equal("\n".join([
+	assert_bool(plan.has("error")).is_false()
+	assert_str(_apply_inline_plan(text, plan)).is_equal("\n".join([
 		"func demo() -> void:",
 		"\tprint(source + 1)",
 		"\treturn source + 1",
 	]))
 
-	code.free()
-	controller.free()
-
 
 func test_inline_uses_lsp_reference_set_for_same_name_variables_in_different_branches() -> void:
-	var controller := SmartEditorController.new()
-	var code := CodeEdit.new()
+	var use_case := LocalVariableInliningUseCase.new()
 	var uri := "file:///project/demo.gd"
-	code.text = "\n".join([
+	var text := "\n".join([
 		"func demo(flag: bool) -> void:",
 		"\tif flag:",
 		"\t\tvar blah: int = 17",
@@ -62,18 +51,14 @@ func test_inline_uses_lsp_reference_set_for_same_name_variables_in_different_bra
 		"\t\tvar blah: int = 23",
 		"\t\tprint(blah)",
 	])
-	controller._inline_code = code
-	controller._inline_uri = uri
-	controller._inline_symbol = "blah"
-	controller._inline_symbol_line = 6
-	controller._inline_symbol_column = code.get_line(6).find("blah")
 
-	controller._inline_apply_from_references([
-		_lsp_reference(uri, 5, code.get_line(5).find("blah"), "blah"),
-		_lsp_reference(uri, 6, code.get_line(6).find("blah"), "blah"),
+	var plan := use_case.build_inline_plan(text, uri, "blah", 6, _line(text, 6).find("blah"), [
+		_lsp_reference(uri, 5, _line(text, 5).find("blah"), "blah"),
+		_lsp_reference(uri, 6, _line(text, 6).find("blah"), "blah"),
 	])
 
-	assert_str(code.get_text()).is_equal("\n".join([
+	assert_bool(plan.has("error")).is_false()
+	assert_str(_apply_inline_plan(text, plan)).is_equal("\n".join([
 		"func demo(flag: bool) -> void:",
 		"\tif flag:",
 		"\t\tvar blah: int = 17",
@@ -82,13 +67,9 @@ func test_inline_uses_lsp_reference_set_for_same_name_variables_in_different_bra
 		"\t\tprint(23)",
 	]))
 
-	code.free()
-	controller.free()
-
 
 func test_inline_refuses_reassignment_after_resolving_declaration_from_usage() -> void:
-	var controller := SmartEditorController.new()
-	var code := CodeEdit.new()
+	var use_case := LocalVariableInliningUseCase.new()
 	var uri := "file:///project/demo.gd"
 	var original := "\n".join([
 		"func demo() -> void:",
@@ -96,47 +77,31 @@ func test_inline_refuses_reassignment_after_resolving_declaration_from_usage() -
 		"\tvalue = 3",
 		"\tprint(value)",
 	])
-	code.text = original
-	controller._inline_code = code
-	controller._inline_uri = uri
-	controller._inline_symbol = "value"
-	controller._inline_symbol_line = 3
-	controller._inline_symbol_column = code.get_line(3).find("value")
 
-	controller._inline_apply_from_references([
-		_lsp_reference(uri, 1, code.get_line(1).find("value"), "value"),
-		_lsp_reference(uri, 2, code.get_line(2).find("value"), "value"),
-		_lsp_reference(uri, 3, code.get_line(3).find("value"), "value"),
+	var plan := use_case.build_inline_plan(original, uri, "value", 3, _line(original, 3).find("value"), [
+		_lsp_reference(uri, 1, _line(original, 1).find("value"), "value"),
+		_lsp_reference(uri, 2, _line(original, 2).find("value"), "value"),
+		_lsp_reference(uri, 3, _line(original, 3).find("value"), "value"),
 	])
 
-	assert_str(code.get_text()).is_equal(original)
-
-	code.free()
-	controller.free()
+	assert_str(str(plan.get("error", ""))).is_equal("refusing to inline 'value' because it appears to be assigned again.")
 
 
 func test_inline_rejects_ambiguous_declarations_from_reference_set() -> void:
-	var controller := SmartEditorController.new()
-	var code := CodeEdit.new()
+	var use_case := LocalVariableInliningUseCase.new()
 	var uri := "file:///project/demo.gd"
-	code.text = "\n".join([
+	var text := "\n".join([
 		"func demo() -> void:",
 		"\tvar value = 1",
 		"\tprint(value)",
 		"\tvar value = 2",
 		"\tprint(value)",
 	])
-	controller._inline_code = code
-	controller._inline_uri = uri
-	controller._inline_symbol = "value"
 
-	assert_dict(controller._inline_find_declaration_from_references([
-		_lsp_reference(uri, 1, code.get_line(1).find("value"), "value"),
-		_lsp_reference(uri, 3, code.get_line(3).find("value"), "value"),
+	assert_dict(use_case.find_declaration_from_references(text.split("\n", true), uri, "value", [
+		_lsp_reference(uri, 1, _line(text, 1).find("value"), "value"),
+		_lsp_reference(uri, 3, _line(text, 3).find("value"), "value"),
 	])).is_empty()
-
-	code.free()
-	controller.free()
 
 
 func _lsp_reference(uri: String, line: int, character: int, symbol: String) -> Dictionary:
@@ -153,3 +118,46 @@ func _lsp_reference(uri: String, line: int, character: int, symbol: String) -> D
 			},
 		},
 	}
+
+
+func _line(text: String, line_index: int) -> String:
+	var lines := text.split("\n", true)
+	return str(lines[line_index])
+
+
+func _apply_inline_plan(text: String, plan: Dictionary) -> String:
+	var code := CodeEdit.new()
+	code.text = text
+	for edit in plan["edits"]:
+		_replace_range_in_code(
+			code,
+			int(edit["line"]),
+			int(edit["from_col"]),
+			int(edit["line"]),
+			int(edit["to_col"]),
+			str(edit["replacement"])
+		)
+	code.remove_line_at(int(plan["declaration_line"]))
+	var result := code.get_text()
+	code.free()
+	return result
+
+
+func _replace_range_in_code(code: CodeEdit, from_line: int, from_col: int, to_line: int, to_col: int, new_text: String) -> void:
+	if from_line == to_line:
+		var line := code.get_line(from_line)
+		code.set_line(from_line, line.substr(0, from_col) + new_text + line.substr(to_col))
+		return
+
+	var first_line := code.get_line(from_line)
+	var last_line := code.get_line(to_line)
+	var replacement_lines := new_text.split("\n")
+
+	code.set_line(from_line, first_line.substr(0, from_col) + replacement_lines[0])
+	for index in range(1, replacement_lines.size()):
+		code.insert_line_at(from_line + index, replacement_lines[index])
+
+	var final_line := from_line + replacement_lines.size() - 1
+	code.set_line(final_line, code.get_line(final_line) + last_line.substr(to_col))
+	for line_index in range(to_line + replacement_lines.size() - 1, final_line, -1):
+		code.remove_line_at(line_index)

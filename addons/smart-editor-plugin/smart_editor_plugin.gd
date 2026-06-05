@@ -1,30 +1,93 @@
 @tool
 extends EditorPlugin
 
-const SmartEditorController := preload("res://addons/smart-editor-plugin/smart_editor/smart_editor_controller.gd")
-const CallHierarchyController := preload("res://addons/smart-editor-plugin/call_hierarchy/call_hierarchy_controller.gd")
+const SmartEditorSettings := preload("res://addons/smart-editor-plugin/settings/smart_editor_settings.gd")
+const ExpandShrinkSelectionController := preload("res://addons/smart-editor-plugin/controllers/expand_shrink_selection_controller.gd")
+const LocalVariableExtractionController := preload("res://addons/smart-editor-plugin/controllers/local_variable_extraction_controller.gd")
+const SymbolRenamingController := preload("res://addons/smart-editor-plugin/controllers/symbol_renaming_controller.gd")
+const LocalVariableInliningController := preload("res://addons/smart-editor-plugin/controllers/local_variable_inlining_controller.gd")
+const SmartSymbolUsageController := preload("res://addons/smart-editor-plugin/controllers/smart_symbol_usage_controller.gd")
+const SmartFunctionBoundaryGuidesController := preload("res://addons/smart-editor-plugin/controllers/smart_function_boundary_guides_controller.gd")
+const CallHierarchyController := preload("res://addons/smart-editor-plugin/controllers/call_hierarchy_controller.gd")
 
-var _smart_editor_controller: Node
+var _expand_shrink_selection_controller: Node
+var _local_variable_extraction_controller: Node
+var _symbol_renaming_controller: Node
+var _local_variable_inlining_controller: Node
+var _symbol_usage_controller: Node
 var _call_hierarchy_controller: Node
+var _function_boundary_guides_controller: Node
 
 
 func _enter_tree() -> void:
-	_smart_editor_controller = SmartEditorController.new()
-	_smart_editor_controller.name = "SmartEditorController"
-	add_child(_smart_editor_controller)
+	SmartEditorSettings.init_editor_settings()
+	SmartEditorSettings.init_highlight_settings()
+
+	_expand_shrink_selection_controller = ExpandShrinkSelectionController.new()
+	_expand_shrink_selection_controller.name = "ExpandShrinkSelectionController"
+	add_child(_expand_shrink_selection_controller)
+
+	_local_variable_extraction_controller = LocalVariableExtractionController.new()
+	_local_variable_extraction_controller.name = "LocalVariableExtractionController"
+	add_child(_local_variable_extraction_controller)
+
+	_symbol_renaming_controller = SymbolRenamingController.new()
+	_symbol_renaming_controller.name = "SymbolRenamingController"
+	add_child(_symbol_renaming_controller)
+
+	_local_variable_inlining_controller = LocalVariableInliningController.new()
+	_local_variable_inlining_controller.name = "LocalVariableInliningController"
+	add_child(_local_variable_inlining_controller)
+
+	_symbol_usage_controller = SmartSymbolUsageController.new()
+	_symbol_usage_controller.name = "SmartSymbolUsageController"
+	add_child(_symbol_usage_controller)
+	_symbol_usage_controller.configure(
+		SmartEditorSettings.SETTING_SYMBOL_USAGE_STRIPE_ENABLED,
+		SmartEditorSettings.HOST,
+		SmartEditorSettings.PORT,
+		SmartEditorSettings.SETTING_SYMBOL_USAGE_HIGHLIGHT_ENABLED,
+		SmartEditorSettings.SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR,
+		SmartEditorSettings.SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR,
+		SmartEditorSettings.SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR
+	)
 
 	_call_hierarchy_controller = CallHierarchyController.new()
 	_call_hierarchy_controller.name = "SmartCallHierarchyController"
 	_call_hierarchy_controller.configure(self)
 	add_child(_call_hierarchy_controller)
 
-	_smart_editor_controller.initialize_after_call_hierarchy_settings()
+	SmartEditorSettings.init_function_boundary_settings()
+
+	_function_boundary_guides_controller = SmartFunctionBoundaryGuidesController.new()
+	_function_boundary_guides_controller.name = "SmartFunctionBoundaryGuidesController"
+	add_child(_function_boundary_guides_controller)
+	_function_boundary_guides_controller.configure(
+		SmartEditorSettings.SETTING_FUNCTION_SEPARATOR_GUIDES_ENABLED,
+		SmartEditorSettings.SETTING_FUNCTION_BOUNDARY_INDENT_GUIDES_ENABLED,
+		SmartEditorSettings.SETTING_FUNCTION_BOUNDARY_GUIDE_COLOR
+	)
 
 
 func _exit_tree() -> void:
+	if _function_boundary_guides_controller != null:
+		_function_boundary_guides_controller.queue_free()
+		_function_boundary_guides_controller = null
 	if _call_hierarchy_controller != null:
 		_call_hierarchy_controller.queue_free()
 		_call_hierarchy_controller = null
-	if _smart_editor_controller != null:
-		_smart_editor_controller.queue_free()
-		_smart_editor_controller = null
+	if _symbol_usage_controller != null:
+		_symbol_usage_controller.queue_free()
+		_symbol_usage_controller = null
+	if _local_variable_inlining_controller != null:
+		_local_variable_inlining_controller.queue_free()
+		_local_variable_inlining_controller = null
+	if _symbol_renaming_controller != null:
+		_symbol_renaming_controller.queue_free()
+		_symbol_renaming_controller = null
+	if _local_variable_extraction_controller != null:
+		_local_variable_extraction_controller.queue_free()
+		_local_variable_extraction_controller = null
+	if _expand_shrink_selection_controller != null:
+		_expand_shrink_selection_controller.queue_free()
+		_expand_shrink_selection_controller = null

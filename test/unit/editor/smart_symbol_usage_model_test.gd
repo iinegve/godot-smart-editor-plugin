@@ -1,6 +1,6 @@
 extends GdUnitTestSuite
 
-const SymbolUsageModel := preload("res://addons/smart-editor-plugin/smart_editor/smart_symbol_usage_model.gd")
+const SymbolUsageModel := preload("res://addons/smart-editor-plugin/common/smart_symbol_usage_model.gd")
 
 
 func test_symbol_range_under_caret_finds_identifier_before_or_inside_caret() -> void:

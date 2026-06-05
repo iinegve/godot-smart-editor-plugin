@@ -1,6 +1,6 @@
 extends GdUnitTestSuite
 
-const CallHierarchyController := preload("res://addons/smart-editor-plugin/call_hierarchy/call_hierarchy_controller.gd")
+const CallHierarchyController := preload("res://addons/smart-editor-plugin/controllers/call_hierarchy_controller.gd")
 const LspClient := preload("res://addons/smart-editor-plugin/common/lsp_client.gd")
 
 

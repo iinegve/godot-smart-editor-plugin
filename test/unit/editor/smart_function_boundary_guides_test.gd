@@ -1,6 +1,6 @@
 extends GdUnitTestSuite
 
-const FunctionBoundaryGuides := preload("res://addons/smart-editor-plugin/smart_editor/smart_function_boundary_guides.gd")
+const FunctionBoundaryGuides := preload("res://addons/smart-editor-plugin/features/function_boundary_guides/smart_function_boundary_guides.gd")
 
 
 func test_function_boundaries_ignore_blank_lines_inside_functions() -> void:

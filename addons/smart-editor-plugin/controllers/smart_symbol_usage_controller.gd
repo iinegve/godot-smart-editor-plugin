@@ -1,10 +1,12 @@
 @tool
 extends Node
 
-const SymbolUsageModel := preload("res://addons/smart-editor-plugin/smart_editor/smart_symbol_usage_model.gd")
-const SymbolUsageHighlight := preload("res://addons/smart-editor-plugin/smart_editor/smart_symbol_usage_highlight.gd")
-const SymbolUsageStripe := preload("res://addons/smart-editor-plugin/smart_editor/smart_symbol_usage_stripe.gd")
+const SymbolUsageModel := preload("res://addons/smart-editor-plugin/common/smart_symbol_usage_model.gd")
+const SymbolUsageHighlight := preload("res://addons/smart-editor-plugin/common/smart_symbol_usage_highlight.gd")
 const LspClient := preload("res://addons/smart-editor-plugin/common/lsp_client.gd")
+
+const SymbolUsageStripe := preload("res://addons/smart-editor-plugin/features/highlights/smart_symbol_usage_stripe.gd")
+
 const STRIPE_WIDTH := 8.0
 const CARET_DEBOUNCE_SECONDS := 0.04
 const NAVIGATION_SETTLE_SECONDS := 0.08

@@ -1,6 +1,6 @@
 extends GdUnitTestSuite
 
-const SymbolUsageHighlight := preload("res://addons/smart-editor-plugin/smart_editor/smart_symbol_usage_highlight.gd")
+const SymbolUsageHighlight := preload("res://addons/smart-editor-plugin/common/smart_symbol_usage_highlight.gd")
 
 
 func test_default_colors_match_editor_setting_defaults() -> void:
