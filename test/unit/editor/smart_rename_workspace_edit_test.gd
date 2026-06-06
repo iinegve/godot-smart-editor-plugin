@@ -1,6 +1,8 @@
 extends GdUnitTestSuite
 
 const SmartRenameWorkspaceEdit := preload("res://addons/smart-editor-plugin/common/smart_rename_workspace_edit.gd")
+const RenameEditSet := preload("res://addons/smart-editor-plugin/features/symbol_renaming/rename_edit_set.gd")
+const RenameTextEdit := preload("res://addons/smart-editor-plugin/features/symbol_renaming/rename_text_edit.gd")
 
 
 func test_workspace_edit_extracts_changes_by_uri() -> void:
@@ -9,60 +11,43 @@ func test_workspace_edit_extracts_changes_by_uri() -> void:
 	var player_edit := _edit(1, 5, 1, 16, "build_label_2")
 	var enemy_edit := _edit(3, 8, 3, 19, "build_label_2")
 
-	assert_dict(SmartRenameWorkspaceEdit.workspace_edit_to_edits_by_uri({
+	var edit_set: RenameEditSet = RenameEditSet.from_lsp_workspace_edit({
 		"changes": {
-			enemy_uri: [enemy_edit],
-			player_uri: [player_edit],
+			enemy_uri: [_lsp_edit(enemy_edit)],
+			player_uri: [_lsp_edit(player_edit)],
 		},
-	})).is_equal({
-		enemy_uri: [enemy_edit],
-		player_uri: [player_edit],
 	})
+
+	assert_int(edit_set.file_count()).is_equal(2)
+	_assert_file_edit(edit_set, enemy_uri, enemy_edit)
+	_assert_file_edit(edit_set, player_uri, player_edit)
 
 
 func test_workspace_edit_extracts_document_changes_by_uri() -> void:
 	var player_uri := "file:///project/player.gd"
 	var edit := _edit(1, 5, 1, 16, "build_label_2")
 
-	assert_dict(SmartRenameWorkspaceEdit.workspace_edit_to_edits_by_uri({
+	var edit_set: RenameEditSet = RenameEditSet.from_lsp_workspace_edit({
 		"documentChanges": [{
 			"textDocument": {
 				"uri": player_uri,
 			},
-			"edits": [edit],
+			"edits": [_lsp_edit(edit)],
 		}],
-	})).is_equal({
-		player_uri: [edit],
 	})
 
+	assert_int(edit_set.file_count()).is_equal(1)
+	_assert_file_edit(edit_set, player_uri, edit)
 
-func test_references_can_be_converted_to_workspace_edit() -> void:
-	var player_uri := "file:///project/player.gd"
-	var enemy_uri := "file:///project/enemy.gd"
-	var player_range := _range(1, 5, 1, 16)
-	var enemy_range := _range(3, 8, 3, 19)
 
-	assert_dict(SmartRenameWorkspaceEdit.references_to_workspace_edit([
-		{
-			"uri": player_uri,
-			"range": player_range,
-		},
-		{
-			"uri": enemy_uri,
-			"range": enemy_range,
-		},
-	], "build_label_2")).is_equal({
+func test_workspace_edit_returns_empty_edit_set_for_invalid_input() -> void:
+	assert_bool(RenameEditSet.from_lsp_workspace_edit("not a workspace edit").is_empty()).is_true()
+	assert_bool(RenameEditSet.from_lsp_workspace_edit({}).is_empty()).is_true()
+	assert_bool(RenameEditSet.from_lsp_workspace_edit({
 		"changes": {
-			player_uri: [{
-				"range": player_range,
-				"newText": "build_label_2",
-			}],
-			enemy_uri: [{
-				"range": enemy_range,
-				"newText": "build_label_2",
-			}],
+			"file:///project/player.gd": ["not a text edit"],
 		},
-	})
+	}).is_empty()).is_true()
 
 
 func test_text_edits_are_applied_from_bottom_to_top() -> void:
@@ -71,10 +56,10 @@ func test_text_edits_are_applied_from_bottom_to_top() -> void:
 		"\treturn build_label()",
 	])
 
-	assert_str(SmartRenameWorkspaceEdit.apply_text_edits_to_text(text, [
+	assert_str(SmartRenameWorkspaceEdit.apply_text_edits_to_text(text, _edits([
 		_edit(0, 5, 0, 16, "build_label_2"),
 		_edit(1, 8, 1, 19, "build_label_2"),
-	])).is_equal("\n".join([
+	]))).is_equal("\n".join([
 		"func build_label_2() -> String:",
 		"\treturn build_label_2()",
 	]))
@@ -87,10 +72,10 @@ func test_text_edits_can_update_code_edit_buffer() -> void:
 		"var second := value",
 	])
 
-	SmartRenameWorkspaceEdit.apply_text_edits_to_code_edit(code, [
+	SmartRenameWorkspaceEdit.apply_text_edits_to_code_edit(code, _edits([
 		_edit(0, 13, 0, 18, "result"),
 		_edit(1, 14, 1, 19, "result"),
-	])
+	]))
 
 	assert_str(code.get_text()).is_equal("\n".join([
 		"var first := result",
@@ -107,10 +92,10 @@ func test_text_edits_can_update_code_edit_buffer_as_one_undo_operation() -> void
 		"var second := value",
 	])
 
-	SmartRenameWorkspaceEdit.apply_text_edits_to_code_edit(code, [
+	SmartRenameWorkspaceEdit.apply_text_edits_to_code_edit(code, _edits([
 		_edit(0, 13, 0, 18, "result"),
 		_edit(1, 14, 1, 19, "result"),
-	], true)
+	]))
 	code.undo()
 
 	assert_str(code.get_text()).is_equal("\n".join([
@@ -163,10 +148,20 @@ func test_save_code_edit_to_script_path_writes_buffer_to_disk() -> void:
 	code.free()
 
 
-func _edit(from_line: int, from_col: int, to_line: int, to_col: int, new_text: String) -> Dictionary:
+func _edit(from_line: int, from_col: int, to_line: int, to_col: int, new_text: String) -> RenameTextEdit:
+	return RenameTextEdit.create(from_line, from_col, to_line, to_col, new_text)
+
+
+func _edits(items: Array) -> Array[RenameTextEdit]:
+	var result: Array[RenameTextEdit] = []
+	result.assign(items)
+	return result
+
+
+func _lsp_edit(edit: RenameTextEdit) -> Dictionary:
 	return {
-		"range": _range(from_line, from_col, to_line, to_col),
-		"newText": new_text,
+		"range": _range(edit.start_line, edit.start_column, edit.end_line, edit.end_column),
+		"newText": edit.new_text,
 	}
 
 
@@ -181,3 +176,18 @@ func _range(from_line: int, from_col: int, to_line: int, to_col: int) -> Diction
 			"character": to_col,
 		},
 	}
+
+
+func _assert_file_edit(edit_set: RenameEditSet, uri: String, expected_edit: RenameTextEdit) -> void:
+	var file_edits = edit_set.file_for_uri(uri)
+	assert_bool(file_edits != null).is_true()
+	assert_int(file_edits.edits.size()).is_equal(1)
+	_assert_edit(file_edits.edits[0], expected_edit)
+
+
+func _assert_edit(actual: RenameTextEdit, expected: RenameTextEdit) -> void:
+	assert_int(actual.start_line).is_equal(expected.start_line)
+	assert_int(actual.start_column).is_equal(expected.start_column)
+	assert_int(actual.end_line).is_equal(expected.end_line)
+	assert_int(actual.end_column).is_equal(expected.end_column)
+	assert_str(actual.new_text).is_equal(expected.new_text)

@@ -1,105 +1,40 @@
 extends RefCounted
 
-
-static func workspace_edit_to_edits_by_uri(workspace_edit: Variant) -> Dictionary:
-	var edits_by_uri := {}
-	if typeof(workspace_edit) != TYPE_DICTIONARY:
-		return edits_by_uri
-
-	if workspace_edit.has("changes") and typeof(workspace_edit["changes"]) == TYPE_DICTIONARY:
-		for uri in workspace_edit["changes"]:
-			if typeof(workspace_edit["changes"][uri]) == TYPE_ARRAY:
-				edits_by_uri[str(uri)] = workspace_edit["changes"][uri]
-	elif workspace_edit.has("documentChanges") and typeof(workspace_edit["documentChanges"]) == TYPE_ARRAY:
-		for document_change in workspace_edit["documentChanges"]:
-			if typeof(document_change) != TYPE_DICTIONARY:
-				continue
-			if not document_change.has("textDocument") or not document_change.has("edits"):
-				continue
-			if typeof(document_change["textDocument"]) != TYPE_DICTIONARY or typeof(document_change["edits"]) != TYPE_ARRAY:
-				continue
-
-			edits_by_uri[str(document_change["textDocument"].get("uri", ""))] = document_change["edits"]
-
-	return edits_by_uri
+const RenameTextEdit := preload("res://addons/smart-editor-plugin/features/symbol_renaming/rename_text_edit.gd")
 
 
-static func references_to_workspace_edit(references: Variant, new_text: String) -> Dictionary:
-	var changes := {}
-	if typeof(references) != TYPE_ARRAY or new_text.is_empty():
-		return {}
-
-	for reference in references:
-		if typeof(reference) != TYPE_DICTIONARY:
-			continue
-
-		var uri := str(reference.get("uri", ""))
-		var range_value: Variant = reference.get("range", null)
-		if uri.is_empty() or typeof(range_value) != TYPE_DICTIONARY:
-			continue
-
-		var range_dict: Dictionary = range_value
-		if (
-			typeof(range_dict.get("start", null)) != TYPE_DICTIONARY
-			or typeof(range_dict.get("end", null)) != TYPE_DICTIONARY
-		):
-			continue
-
-		if not changes.has(uri):
-			changes[uri] = []
-		changes[uri].append({
-			"range": range_dict,
-			"newText": new_text,
-		})
-
-	if changes.is_empty():
-		return {}
-
-	return {
-		"changes": changes,
-	}
-
-
-static func apply_text_edits_to_text(text: String, edits: Array) -> String:
+static func apply_text_edits_to_text(text: String, edits: Array[RenameTextEdit]) -> String:
 	for edit in sorted_text_edits_desc(edits):
-		if not _is_text_edit(edit):
+		if edit == null or not edit.is_valid():
 			continue
 
-		var edit_range: Dictionary = edit["range"]
-		var start: Dictionary = edit_range["start"]
-		var end: Dictionary = edit_range["end"]
-		var from_offset := line_col_to_offset(text, int(start["line"]), int(start["character"]))
-		var to_offset := line_col_to_offset(text, int(end["line"]), int(end["character"]))
+		var from_offset := line_col_to_offset(text, edit.start_line, edit.start_column)
+		var to_offset := line_col_to_offset(text, edit.end_line, edit.end_column)
 		if from_offset < 0 or to_offset < from_offset:
 			continue
 
-		text = text.substr(0, from_offset) + str(edit["newText"]) + text.substr(to_offset)
+		text = text.substr(0, from_offset) + edit.new_text + text.substr(to_offset)
 
 	return text
 
 
-static func apply_text_edits_to_code_edit(code: CodeEdit, edits: Array, complex_operation: bool = false) -> void:
-	if complex_operation:
-		code.begin_complex_operation()
+static func apply_text_edits_to_code_edit(code: CodeEdit, edits: Array[RenameTextEdit]) -> void:
+	code.begin_complex_operation()
 
 	for edit in sorted_text_edits_desc(edits):
-		if not _is_text_edit(edit):
+		if edit == null or not edit.is_valid():
 			continue
 
-		var edit_range: Dictionary = edit["range"]
-		var start: Dictionary = edit_range["start"]
-		var end: Dictionary = edit_range["end"]
 		_replace_range_in_code(
 			code,
-			int(start["line"]),
-			int(start["character"]),
-			int(end["line"]),
-			int(end["character"]),
-			str(edit["newText"])
+			edit.start_line,
+			edit.start_column,
+			edit.end_line,
+			edit.end_column,
+			edit.new_text
 		)
 
-	if complex_operation:
-		code.end_complex_operation()
+	code.end_complex_operation()
 
 
 static func sync_script_from_code_edit(script: Script, code: CodeEdit) -> void:
@@ -147,8 +82,9 @@ static func write_text_to_file(path: String, text: String) -> bool:
 	return true
 
 
-static func sorted_text_edits_desc(edits: Array) -> Array:
-	var sorted := edits.duplicate()
+static func sorted_text_edits_desc(edits: Array[RenameTextEdit]) -> Array[RenameTextEdit]:
+	var sorted: Array[RenameTextEdit] = []
+	sorted.assign(edits)
 	sorted.sort_custom(_compare_text_edits_desc)
 	return sorted
 
@@ -195,24 +131,7 @@ static func _replace_range_in_code(code: CodeEdit, from_line: int, from_col: int
 		code.remove_line_at(line_index)
 
 
-static func _is_text_edit(edit: Variant) -> bool:
-	if typeof(edit) != TYPE_DICTIONARY:
-		return false
-	if not edit.has("range") or not edit.has("newText"):
-		return false
-	if typeof(edit["range"]) != TYPE_DICTIONARY:
-		return false
-
-	var edit_range: Dictionary = edit["range"]
-	return (
-		typeof(edit_range.get("start", null)) == TYPE_DICTIONARY
-		and typeof(edit_range.get("end", null)) == TYPE_DICTIONARY
-	)
-
-
-static func _compare_text_edits_desc(a: Dictionary, b: Dictionary) -> bool:
-	var a_start: Dictionary = a["range"]["start"]
-	var b_start: Dictionary = b["range"]["start"]
-	if a_start["line"] == b_start["line"]:
-		return a_start["character"] > b_start["character"]
-	return a_start["line"] > b_start["line"]
+static func _compare_text_edits_desc(a: RenameTextEdit, b: RenameTextEdit) -> bool:
+	if a.start_line == b.start_line:
+		return a.start_column > b.start_column
+	return a.start_line > b.start_line

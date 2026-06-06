@@ -14,7 +14,6 @@ const SETTING_SHRINK_SHORTCUT := SETTING_EDITOR_PREFIX + &"shrink_selection"
 const SETTING_EXTRACT_SHORTCUT := SETTING_EDITOR_PREFIX + &"extract_local_variable"
 const SETTING_RENAME_SHORTCUT := SETTING_EDITOR_PREFIX + &"rename_symbol"
 const SETTING_INLINE_SHORTCUT := SETTING_EDITOR_PREFIX + &"inline_variable"
-const SETTING_RENAME_MULTI_FILE_WARNING_ENABLED := SETTING_EDITOR_PREFIX + &"show_multi_file_rename_warning"
 const SETTING_SYMBOL_USAGE_STRIPE_ENABLED := SETTING_HIGHLIGHTS_PREFIX + &"stripe_highlights_enabled"
 const SETTING_SYMBOL_USAGE_HIGHLIGHT_ENABLED := SETTING_HIGHLIGHTS_PREFIX + &"in-editor_highlights_enabled"
 const SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR := SETTING_HIGHLIGHTS_PREFIX + &"highlight_color"
@@ -46,7 +45,6 @@ const LEGACY_SETTING_SHRINK_SHORTCUT := SETTINGS_PREFIX + &"shrink_selection"
 const LEGACY_SETTING_EXTRACT_SHORTCUT := SETTINGS_PREFIX + &"extract_local_variable"
 const LEGACY_SETTING_RENAME_SHORTCUT := SETTINGS_PREFIX + &"rename_symbol"
 const LEGACY_SETTING_INLINE_SHORTCUT := SETTINGS_PREFIX + &"inline_variable"
-const LEGACY_SETTING_RENAME_MULTI_FILE_WARNING_DISMISSED := SETTING_EDITOR_PREFIX + &"rename_multi_file_warning_dismissed"
 const REMOVED_SETTING_DEBUG_LOGS := SETTINGS_PREFIX + &"debug_logs"
 const REMOVED_SETTING_DIAGNOSTICS_DEBUG_LOGS := SETTINGS_PREFIX + &"diagnostics/debug_logs_enabled"
 const REMOVED_SETTING_RENAME_LSP_PROBE_ONLY := SETTINGS_PREFIX + &"rename_lsp_probe_only"
@@ -56,6 +54,8 @@ const REMOVED_SETTING_SYMBOL_USAGE_LSP_ENABLED_GROUPED := SETTINGS_PREFIX + &"sy
 const REMOVED_SETTING_EXTRACT_METHOD := SETTINGS_PREFIX + &"extract_method"
 const REMOVED_SETTING_SYMBOL_USAGE_PROFILE_LOGS := SETTINGS_PREFIX + &"symbol_usage_profile_logs"
 const REMOVED_SETTING_RENAME_PROFILE_LOGS := SETTINGS_PREFIX + &"rename_profile_logs"
+const REMOVED_SETTING_RENAME_MULTI_FILE_WARNING_ENABLED := SETTING_EDITOR_PREFIX + &"show_multi_file_rename_warning"
+const REMOVED_SETTING_RENAME_MULTI_FILE_WARNING_DISMISSED := SETTING_EDITOR_PREFIX + &"rename_multi_file_warning_dismissed"
 
 const HOST := "127.0.0.1"
 const PORT := 6005
@@ -68,7 +68,6 @@ static func init_editor_settings() -> void:
 	_init_shortcut_setting(SETTING_EXTRACT_SHORTCUT, _make_shortcut(KEY_V, true, true), LEGACY_SETTING_EXTRACT_SHORTCUT)
 	_init_shortcut_setting(SETTING_RENAME_SHORTCUT, _make_shortcut(KEY_R, true, true), LEGACY_SETTING_RENAME_SHORTCUT)
 	_init_shortcut_setting(SETTING_INLINE_SHORTCUT, _make_shortcut(KEY_N, true, true), LEGACY_SETTING_INLINE_SHORTCUT)
-	_init_rename_multi_file_warning_setting()
 	_erase_removed_settings([
 		REMOVED_SETTING_DEBUG_LOGS,
 		REMOVED_SETTING_DIAGNOSTICS_DEBUG_LOGS,
@@ -79,6 +78,8 @@ static func init_editor_settings() -> void:
 		REMOVED_SETTING_EXTRACT_METHOD,
 		REMOVED_SETTING_SYMBOL_USAGE_PROFILE_LOGS,
 		REMOVED_SETTING_RENAME_PROFILE_LOGS,
+		REMOVED_SETTING_RENAME_MULTI_FILE_WARNING_ENABLED,
+		REMOVED_SETTING_RENAME_MULTI_FILE_WARNING_DISMISSED,
 	])
 
 
@@ -131,21 +132,6 @@ static func set_setting(path: StringName, value: Variant) -> void:
 static func shortcut_matches(path: StringName, event: InputEvent) -> bool:
 	var shortcut = get_setting(path, null)
 	return shortcut is Shortcut and shortcut.matches_event(event)
-
-
-static func _init_rename_multi_file_warning_setting() -> void:
-	var settings := EditorInterface.get_editor_settings()
-	if not settings.has_setting(SETTING_RENAME_MULTI_FILE_WARNING_ENABLED):
-		var value := true
-		if settings.has_setting(LEGACY_SETTING_RENAME_MULTI_FILE_WARNING_DISMISSED):
-			value = not bool(settings.get_setting(LEGACY_SETTING_RENAME_MULTI_FILE_WARNING_DISMISSED))
-		settings.set_setting(SETTING_RENAME_MULTI_FILE_WARNING_ENABLED, value)
-	settings.set_initial_value(SETTING_RENAME_MULTI_FILE_WARNING_ENABLED, true, false)
-	settings.add_property_info({
-		"name": SETTING_RENAME_MULTI_FILE_WARNING_ENABLED,
-		"type": TYPE_BOOL,
-	})
-	_erase_setting(LEGACY_SETTING_RENAME_MULTI_FILE_WARNING_DISMISSED)
 
 
 static func _init_setting(path: StringName, default_value: Variant, type: int, hint: int = PROPERTY_HINT_NONE, hint_string: String = "", legacy_path: StringName = &"") -> void:

@@ -5,7 +5,7 @@ const SmartEditorSettings := preload("res://addons/smart-editor-plugin/settings/
 const GDScriptIdentifierValidator := preload("res://addons/smart-editor-plugin/common/gdscript_identifier_validator.gd")
 const LocalVariableExtractionUseCase := preload("res://addons/smart-editor-plugin/features/local_variable_extraction/use_case.gd")
 
-const IDENTIFIER_DIALOG_WIDTH := 560
+const IDENTIFIER_DIALOG_WIDTH := 800
 const IDENTIFIER_DIALOG_HEIGHT := 150
 
 var _dialog: ConfirmationDialog
