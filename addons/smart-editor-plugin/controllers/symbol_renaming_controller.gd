@@ -12,51 +12,23 @@ const RenameModifiedClosedFile := preload("res://addons/smart-editor-plugin/feat
 const RenameModifiedOpenFile := preload("res://addons/smart-editor-plugin/features/symbol_renaming/rename_modified_open_file.gd")
 const RenameOpenScriptBuffer := preload("res://addons/smart-editor-plugin/features/symbol_renaming/rename_open_script_buffer.gd")
 const RenameOpenScriptBuffers := preload("res://addons/smart-editor-plugin/features/symbol_renaming/rename_open_script_buffers.gd")
-const RenameRequest := preload("res://addons/smart-editor-plugin/features/symbol_renaming/rename_request.gd")
 const RenameSymbolTarget := preload("res://addons/smart-editor-plugin/features/symbol_renaming/rename_symbol_target.gd")
 const RenameTextEdit := preload("res://addons/smart-editor-plugin/features/symbol_renaming/rename_text_edit.gd")
 
 const IDENTIFIER_DIALOG_WIDTH := 800
 const IDENTIFIER_DIALOG_HEIGHT := 150
-const RENAME_PREWARM_RETRY_USEC := 1_000_000
 
 var _rename_code: CodeEdit
-
-var _rename_lsp := LspClient.new()
-var _rename_request: RenameRequest = RenameRequest.new()
-var _rename_prewarm_pending := false
-var _rename_last_prewarm_attempt_usec := 0
+var _lsp_service: Node
 var _identifier_validator := GDScriptIdentifierValidator.new()
 
 
+func configure(lsp_service: Node) -> void:
+	_lsp_service = lsp_service
+
+
 func _enter_tree() -> void:
-	_configure_lsp_client()
-	_rename_prewarm_pending = true
 	set_process_shortcut_input(true)
-	set_process(true)
-
-
-func _configure_lsp_client() -> void:
-	_rename_lsp.configure("Rename Symbol", SmartEditorSettings.HOST, SmartEditorSettings.PORT, {
-		"workspace": {
-			"applyEdit": true,
-		},
-		"textDocument": {
-			"rename": {
-				"dynamicRegistration": false,
-				"prepareSupport": true,
-			},
-		},
-	})
-
-
-func _exit_tree() -> void:
-	_rename_lsp.disconnect_from_host()
-
-
-func _process(_delta: float) -> void:
-	_prewarm_lsp_connection()
-	_process_connection()
 
 
 func _shortcut_input(event: InputEvent) -> void:
@@ -155,127 +127,31 @@ func _apply_rename(
 	if replacement == original_text:
 		return
 
-	_rename_request.configure(target_uri, line, column, replacement)
+	if _lsp_service == null:
+		print("Rename Symbol: code analysis service is not configured.")
+		return
 
-	if _ensure_connection():
-		_try_send_request()
+	await _lsp_service.sync_open_scripts()
+	if _rename_code != null:
+		await _lsp_service.sync_document(target_uri, _get_code_text(_rename_code))
+
+	var prepare_response = await _lsp_service.prepare_rename(target_uri, line, column)
+	if not prepare_response.ok:
+		print("Rename Symbol: prepareRename failed: %s" % JSON.stringify(prepare_response.error))
+
+	var rename_response = await _lsp_service.rename(target_uri, line, column, replacement)
+	if not rename_response.ok:
+		print("Rename Symbol: request failed: %s" % JSON.stringify(rename_response.error))
+		return
+
+	var rename_edits: RenameEditSet = RenameEditSet.from_lsp_workspace_edit(rename_response.result)
+	await _apply_rename_edits(rename_edits)
 
 
 func _set_identifier_validation_state(dialog: ConfirmationDialog, error_label: Label,	validation_error: String) -> void:
 	error_label.text = validation_error
 	error_label.visible = not validation_error.is_empty()
 	dialog.get_ok_button().disabled = not validation_error.is_empty()
-
-
-func _process_connection() -> void:
-	if _rename_lsp.get_status() == StreamPeerTCP.STATUS_NONE:
-		return
-
-	var responses := _rename_lsp.poll()
-	if _rename_lsp.is_initialized():
-		_rename_prewarm_pending = false
-	for response in responses:
-		_handle_response(response)
-	_try_send_request()
-
-
-func _prewarm_lsp_connection() -> void:
-	if not _rename_prewarm_pending:
-		return
-	if _rename_lsp.is_initialized():
-		_rename_prewarm_pending = false
-		return
-	if not _rename_request.is_empty() or _rename_lsp.has_pending_requests():
-		return
-
-	var status := _rename_lsp.get_status()
-	if status == StreamPeerTCP.STATUS_CONNECTED or status == StreamPeerTCP.STATUS_CONNECTING:
-		return
-
-	var now := Time.get_ticks_usec()
-	if _rename_last_prewarm_attempt_usec > 0 and now - _rename_last_prewarm_attempt_usec < RENAME_PREWARM_RETRY_USEC:
-		return
-	_rename_last_prewarm_attempt_usec = now
-	_ensure_connection(false)
-
-
-func _ensure_connection(report_errors: bool = true) -> bool:
-	var connected := _rename_lsp.ensure_connection(report_errors)
-	if not connected and report_errors:
-		print("Rename Symbol: could not connect to the code analysis service.")
-	return connected
-
-
-func _try_send_request() -> void:
-	if _rename_request.is_empty() or not _rename_lsp.is_initialized():
-		return
-	
-	var pending_prepare_rename = _rename_lsp.has_pending_kind("prepare_rename")
-	var pending_rename = _rename_lsp.has_pending_kind("rename")
-	if (pending_prepare_rename or pending_rename):
-		return
-
-	_send_open_document_sync_notifications()
-	_send_prepare_rename_request()
-
-
-func _send_prepare_rename_request() -> void:
-	_rename_lsp.send_request("prepare_rename", "textDocument/prepareRename", {
-		"textDocument": {
-			"uri": _rename_request.uri,
-		},
-		"position": {
-			"line": _rename_request.line,
-			"character": _rename_request.column,
-		},
-	})
-
-
-func _send_rename_request() -> void:
-	_rename_lsp.send_request("rename", "textDocument/rename", {
-		"textDocument": {
-			"uri": _rename_request.uri,
-		},
-		"position": {
-			"line": _rename_request.line,
-			"character": _rename_request.column,
-		},
-		"newName": _rename_request.new_name,
-	})
-
-
-func _send_open_document_sync_notifications() -> void:
-	var target_uri := _rename_request.uri
-	var open_script_buffers := _open_script_buffers_by_uri()
-
-	for open_script_buffer in open_script_buffers.buffers:
-		var text := _get_code_text(open_script_buffer.code)
-		_rename_lsp.sync_document(open_script_buffer.uri, text)
-
-	if not target_uri.is_empty() and not open_script_buffers.has_uri(target_uri) and _rename_code != null:
-		var target_text := _get_code_text(_rename_code)
-		_rename_lsp.sync_document(target_uri, target_text)
-
-
-func _handle_response(response: Dictionary) -> void:
-	var request_kind := str(response.get("kind", ""))
-	var message: Dictionary = response.get("message", {})
-
-	if message.has("error"):
-		if request_kind == "prepare_rename":
-			print("Rename Symbol: prepareRename failed: %s" % JSON.stringify(message["error"]))
-			_send_rename_request()
-			return
-
-		print("Rename Symbol: request failed: %s" % JSON.stringify(message["error"]))
-		return
-
-	if request_kind == "prepare_rename":
-		_send_rename_request()
-	elif request_kind == "rename":
-		var rename_edits: RenameEditSet = RenameEditSet.from_lsp_workspace_edit(message.get("result", {}))
-		_apply_rename_edits(rename_edits)
-	_rename_request.clear()
 
 
 func _apply_rename_edits(rename_edits: RenameEditSet) -> void:
@@ -321,7 +197,7 @@ func _apply_rename_edits(rename_edits: RenameEditSet) -> void:
 	if any_file_written:
 		_scan_resource_filesystem_sources()
 
-	_sync_modified_open_buffers_to_lsp(modified_open_buffers)
+	await _sync_modified_files_to_lsp(modified_open_buffers, modified_closed_files)
 
 
 func _apply_open_rename_edits(
@@ -388,9 +264,18 @@ func _sync_modified_rename_resources(
 		_sync_script_resource_for_uri(closed_item.uri, closed_item.text)
 
 
-func _sync_modified_open_buffers_to_lsp(modified_open_buffers: Array[RenameModifiedOpenFile]) -> void:
+func _sync_modified_files_to_lsp(
+	modified_open_buffers: Array[RenameModifiedOpenFile],
+	modified_closed_files: Array[RenameModifiedClosedFile]
+) -> void:
+	if _lsp_service == null:
+		return
+
 	for open_item in modified_open_buffers:
-		_rename_lsp.sync_document(open_item.uri, open_item.text)
+		await _lsp_service.sync_document(open_item.uri, open_item.text)
+
+	for closed_item in modified_closed_files:
+		await _lsp_service.sync_document(closed_item.uri, closed_item.text)
 
 
 func _open_script_buffers_by_uri(affected_rename_edits: RenameEditSet = null) -> RenameOpenScriptBuffers:
@@ -540,10 +425,6 @@ func _apply_text_edits_to_file(uri: String, edits: Array[RenameTextEdit]) -> Str
 		return ""
 
 	return updated_text
-
-
-func _reset_connection() -> void:
-	_rename_lsp.reset()
 
 
 func _path_to_file_uri(path: String) -> String:

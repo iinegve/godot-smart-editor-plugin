@@ -9,7 +9,9 @@ const LocalVariableInliningController := preload("res://addons/smart-editor-plug
 const SmartSymbolUsageController := preload("res://addons/smart-editor-plugin/controllers/smart_symbol_usage_controller.gd")
 const SmartFunctionBoundaryGuidesController := preload("res://addons/smart-editor-plugin/controllers/smart_function_boundary_guides_controller.gd")
 const CallHierarchyController := preload("res://addons/smart-editor-plugin/controllers/call_hierarchy_controller.gd")
+const SmartEditorLspService := preload("res://addons/smart-editor-plugin/common/lsp/smart_editor_lsp_service.gd")
 
+var _lsp_service: Node
 var _expand_shrink_selection_controller: Node
 var _local_variable_extraction_controller: Node
 var _symbol_renaming_controller: Node
@@ -23,6 +25,11 @@ func _enter_tree() -> void:
 	SmartEditorSettings.init_editor_settings()
 	SmartEditorSettings.init_highlight_settings()
 
+	_lsp_service = SmartEditorLspService.new()
+	_lsp_service.name = "SmartEditorLspService"
+	_lsp_service.configure(SmartEditorSettings.HOST, SmartEditorSettings.PORT)
+	add_child(_lsp_service)
+
 	_expand_shrink_selection_controller = ExpandShrinkSelectionController.new()
 	_expand_shrink_selection_controller.name = "ExpandShrinkSelectionController"
 	add_child(_expand_shrink_selection_controller)
@@ -33,6 +40,7 @@ func _enter_tree() -> void:
 
 	_symbol_renaming_controller = SymbolRenamingController.new()
 	_symbol_renaming_controller.name = "SymbolRenamingController"
+	_symbol_renaming_controller.configure(_lsp_service)
 	add_child(_symbol_renaming_controller)
 
 	_local_variable_inlining_controller = LocalVariableInliningController.new()
@@ -54,7 +62,7 @@ func _enter_tree() -> void:
 
 	_call_hierarchy_controller = CallHierarchyController.new()
 	_call_hierarchy_controller.name = "SmartCallHierarchyController"
-	_call_hierarchy_controller.configure(self)
+	_call_hierarchy_controller.configure(self, _lsp_service)
 	add_child(_call_hierarchy_controller)
 
 	SmartEditorSettings.init_function_boundary_settings()
@@ -91,3 +99,6 @@ func _exit_tree() -> void:
 	if _expand_shrink_selection_controller != null:
 		_expand_shrink_selection_controller.queue_free()
 		_expand_shrink_selection_controller = null
+	if _lsp_service != null:
+		_lsp_service.queue_free()
+		_lsp_service = null
