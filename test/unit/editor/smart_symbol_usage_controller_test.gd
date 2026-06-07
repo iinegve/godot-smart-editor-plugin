@@ -3,22 +3,6 @@ extends GdUnitTestSuite
 const SymbolUsageController := preload("res://addons/smart-editor-plugin/controllers/smart_symbol_usage_controller.gd")
 
 
-class QueuingSymbolUsageController:
-	extends SymbolUsageController
-
-
-	func _lsp_enabled() -> bool:
-		return true
-
-
-	func _ensure_connection() -> bool:
-		return true
-
-
-	func _try_send_references_request122() -> void:
-		pass
-
-
 class FakeSymbolUsageView:
 	var references: Array = []
 	var line_count := 0
@@ -41,13 +25,6 @@ class FakeSymbolUsageView:
 		current_reference.clear()
 
 
-func test_controller_runs_when_either_stripe_or_highlight_is_enabled() -> void:
-	assert_bool(SymbolUsageController.should_run_controller(true, false)).is_true()
-	assert_bool(SymbolUsageController.should_run_controller(false, true)).is_true()
-	assert_bool(SymbolUsageController.should_run_controller(true, true)).is_true()
-	assert_bool(SymbolUsageController.should_run_controller(false, false)).is_false()
-
-
 func test_caret_changes_use_idle_debounce() -> void:
 	var controller := SymbolUsageController.new()
 
@@ -61,14 +38,6 @@ func test_caret_changes_use_idle_debounce() -> void:
 	)
 
 	controller.free()
-
-
-func test_navigation_delay_includes_mouse_and_arrow_keys() -> void:
-	assert_bool(SymbolUsageController._is_navigation_key(KEY_UP)).is_true()
-	assert_bool(SymbolUsageController._is_navigation_key(KEY_DOWN)).is_true()
-	assert_bool(SymbolUsageController._is_navigation_key(KEY_LEFT)).is_true()
-	assert_bool(SymbolUsageController._is_navigation_key(KEY_RIGHT)).is_true()
-	assert_bool(SymbolUsageController._is_navigation_key(KEY_A)).is_false()
 
 
 func test_caret_debounce_stays_responsive() -> void:
@@ -93,7 +62,7 @@ func test_caret_changes_reset_existing_caret_debounce() -> void:
 	controller.free()
 
 
-func test_symbol_change_paints_local_references_before_lsp_response_arrives() -> void:
+func test_symbol_change_paints_local_references() -> void:
 	var code := CodeEdit.new()
 	code.text = "\n".join([
 		"var first := 1",
@@ -108,7 +77,7 @@ func test_symbol_change_paints_local_references_before_lsp_response_arrives() ->
 	stripe.set_usage_references([_ref(0, 4, 9)], 3, _ref(0, 4, 9))
 	highlight.set_usage_references([_ref(0, 4, 9)], 3, _ref(0, 4, 9))
 
-	var controller := QueuingSymbolUsageController.new()
+	var controller := SymbolUsageController.new()
 	controller._code = code
 	controller._uri = "file:///project/player.gd"
 	controller._stripe = stripe
@@ -123,13 +92,12 @@ func test_symbol_change_paints_local_references_before_lsp_response_arrives() ->
 		_ref(2, 6, 12),
 	])
 	assert_array(highlight.references).is_equal(stripe.references)
-	assert_str(controller._queued_request["symbol"]).is_equal("second")
 
 	controller.free()
 	code.free()
 
 
-func test_lsp_disabled_uses_local_references_without_queuing_request() -> void:
+func test_uses_local_text_references() -> void:
 	var code := CodeEdit.new()
 	code.text = "\n".join([
 		"var first := 1",
@@ -151,14 +119,12 @@ func test_lsp_disabled_uses_local_references_without_queuing_request() -> void:
 		_ref(1, 4, 10),
 		_ref(2, 6, 12),
 	])
-	assert_dict(controller._queued_request).is_empty()
-	assert_int(controller._lsp.get_status()).is_equal(StreamPeerTCP.STATUS_NONE)
 
 	controller.free()
 	code.free()
 
 
-func test_member_call_symbol_change_clears_references_while_waiting_for_lsp() -> void:
+func test_member_call_symbol_change_clears_references() -> void:
 	var code := CodeEdit.new()
 	code.text = "\n".join([
 		"func clear_references() -> void:",
@@ -173,7 +139,7 @@ func test_member_call_symbol_change_clears_references_while_waiting_for_lsp() ->
 	stripe.set_usage_references([_ref(0, 5, 21)], 3, _ref(0, 5, 21))
 	highlight.set_usage_references([_ref(0, 5, 21)], 3, _ref(0, 5, 21))
 
-	var controller := QueuingSymbolUsageController.new()
+	var controller := SymbolUsageController.new()
 	controller._code = code
 	controller._uri = "file:///project/player.gd"
 	controller._stripe = stripe
@@ -184,7 +150,6 @@ func test_member_call_symbol_change_clears_references_while_waiting_for_lsp() ->
 	assert_int(stripe.clear_count).is_equal(1)
 	assert_int(highlight.clear_count).is_equal(1)
 	assert_array(stripe.references).is_empty()
-	assert_str(controller._queued_request["symbol"]).is_equal("clear")
 
 	controller.free()
 	code.free()
@@ -253,7 +218,7 @@ func test_caret_changes_do_not_shorten_pending_text_debounce() -> void:
 	controller.free()
 
 
-func test_empty_lsp_references_fall_back_to_current_file_function_tokens() -> void:
+func test_text_references_find_current_file_function_tokens() -> void:
 	var code := CodeEdit.new()
 	code.text = "\n".join([
 		"func refresh() -> void:",
@@ -271,7 +236,7 @@ func test_empty_lsp_references_fall_back_to_current_file_function_tokens() -> vo
 	controller._stripe = stripe
 	controller._highlight = highlight
 
-	controller._apply_references([], {
+	controller._apply_text_references({
 		"uri": "file:///project/player.gd",
 		"symbol": "refresh",
 		"line": 0,
@@ -296,7 +261,7 @@ func test_empty_lsp_references_fall_back_to_current_file_function_tokens() -> vo
 	code.free()
 
 
-func test_empty_lsp_references_do_not_fall_back_for_member_method_names() -> void:
+func test_text_references_do_not_highlight_member_method_names() -> void:
 	var code := CodeEdit.new()
 	code.text = "\n".join([
 		"func clear_references() -> void:",
@@ -314,7 +279,7 @@ func test_empty_lsp_references_do_not_fall_back_for_member_method_names() -> voi
 	controller._stripe = stripe
 	controller._highlight = highlight
 
-	controller._apply_references([], {
+	controller._apply_text_references({
 		"uri": "file:///project/player.gd",
 		"symbol": "clear",
 		"line": 1,
@@ -336,7 +301,7 @@ func test_empty_lsp_references_do_not_fall_back_for_member_method_names() -> voi
 	code.free()
 
 
-func test_lsp_references_include_current_for_loop_variable_declaration() -> void:
+func test_text_references_include_current_for_loop_variable_declaration() -> void:
 	var code := CodeEdit.new()
 	code.text = "\n".join([
 		"for reference in _references:",
@@ -353,9 +318,7 @@ func test_lsp_references_include_current_for_loop_variable_declaration() -> void
 	controller._stripe = stripe
 	controller._highlight = highlight
 
-	controller._apply_references([
-		_lsp_reference("file:///project/player.gd", 1, 7, 1, 16),
-	], {
+	controller._apply_text_references({
 		"uri": "file:///project/player.gd",
 		"symbol": "reference",
 		"line": 0,
@@ -377,7 +340,7 @@ func test_lsp_references_include_current_for_loop_variable_declaration() -> void
 	code.free()
 
 
-func test_lsp_references_ignore_string_occurrences() -> void:
+func test_text_references_ignore_string_occurrences() -> void:
 	var code := CodeEdit.new()
 	code.text = "\n".join([
 		"func tokenize_line(to_col: int) -> void:",
@@ -395,11 +358,7 @@ func test_lsp_references_ignore_string_occurrences() -> void:
 	controller._stripe = stripe
 	controller._highlight = highlight
 
-	controller._apply_references([
-		_lsp_reference("file:///project/player.gd", 0, 19, 0, 25),
-		_lsp_reference("file:///project/player.gd", 1, 25, 1, 31),
-		_lsp_reference("file:///project/player.gd", 2, 7, 2, 13),
-	], {
+	controller._apply_text_references({
 		"uri": "file:///project/player.gd",
 		"symbol": "to_col",
 		"line": 0,
@@ -447,20 +406,4 @@ func _ref(line: int, column: int, end_column: int) -> Dictionary:
 		"column": column,
 		"end_line": line,
 		"end_column": end_column,
-	}
-
-
-func _lsp_reference(uri: String, line: int, column: int, end_line: int, end_column: int) -> Dictionary:
-	return {
-		"uri": uri,
-		"range": {
-			"start": {
-				"line": line,
-				"character": column,
-			},
-			"end": {
-				"line": end_line,
-				"character": end_column,
-			},
-		},
 	}

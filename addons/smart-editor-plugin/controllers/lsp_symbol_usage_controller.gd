@@ -11,6 +11,8 @@ const STRIPE_WIDTH := 8.0
 const CARET_DEBOUNCE_SECONDS := 0.04
 const NAVIGATION_SETTLE_SECONDS := 0.08
 const TEXT_DEBOUNCE_SECONDS := 0.40
+const PROFILE_LOGS_ENABLED := true
+const PROFILE_LOG_PREFIX := "LSP Highlights Profile:"
 
 var _enabled_setting: StringName = &""
 var _highlight_enabled_setting: StringName = &""
@@ -27,20 +29,24 @@ var _refresh_pending := false
 var _debounce_remaining := 0.0
 var _text_change_pending := false
 var _current_symbol_key := ""
+var _request_generation := 0
 var _overlays_dirty := false
 var _last_references: Array[Dictionary] = []
 var _last_line_count := 0
 var _last_current_reference := {}
+var _lsp_service: Node
 
 
 func configure(
 	enabled_setting: StringName,
+	lsp_service: Node,
 	highlight_enabled_setting: StringName = &"",
 	highlight_color_setting: StringName = &"",
 	current_highlight_color_setting: StringName = &"",
 	current_outline_color_setting: StringName = &""
 ) -> void:
 	_enabled_setting = enabled_setting
+	_lsp_service = lsp_service
 	_highlight_enabled_setting = highlight_enabled_setting
 	_highlight_color_setting = highlight_color_setting
 	_current_highlight_color_setting = current_highlight_color_setting
@@ -65,19 +71,15 @@ func _process(delta: float) -> void:
 		return
 
 	_connect_script_editor()
-
 	_attach_to_current_code_edit()
-
 	_sync_stripe_overlay()
-
 	_sync_highlight_overlay()
 
 	if _overlays_dirty:
 		_layout_overlays()
 
-	var delay_for_navigation := _refresh_pending and _should_delay_caret_refresh_for_navigation()
 	if _refresh_pending:
-		if delay_for_navigation:
+		if _should_delay_caret_refresh_for_navigation():
 			_debounce_remaining = maxf(_debounce_remaining, NAVIGATION_SETTLE_SECONDS)
 			return
 
@@ -284,47 +286,142 @@ func _refresh_references() -> void:
 	if symbol_key == _current_symbol_key:
 		return
 
+	_request_generation += 1
 	_current_symbol_key = symbol_key
 	var request := {
 		"uri": _uri,
 		"symbol": symbol_range["symbol"],
 		"line": symbol_range["line"],
-			"column": symbol_range["column"],
-			"end_line": symbol_range["line"],
-			"end_column": symbol_range["end_column"],
-			"code_version": code_version,
-			"is_member_call": SymbolUsageModel.is_member_call_symbol(
-				caret_line,
-				int(symbol_range["column"]),
-				int(symbol_range["end_column"])
-			),
-		}
-	_apply_text_references(request)
+		"column": symbol_range["column"],
+		"end_line": symbol_range["line"],
+		"end_column": symbol_range["end_column"],
+		"code_version": code_version,
+		"generation": _request_generation,
+	}
+
+	_clear_references()
+	if _lsp_service == null:
+		return
+
+	_refresh_semantic_references(request)
 
 
-func _apply_text_references(request: Dictionary) -> void:
+func _refresh_semantic_references(request: Dictionary) -> void:
 	if not _request_matches_current(request):
 		return
 
-	if bool(request.get("is_member_call", false)):
-		_clear_references()
-		return
-
+	var request_started_usec := Time.get_ticks_usec()
+	var code_text_started_usec := request_started_usec
+	var uri := str(request["uri"])
 	var code_text := _get_code_text(_code)
-	var fallback_references := SymbolUsageModel.references_for_symbol_in_text(
-		code_text,
-		str(request.get("symbol", ""))
+	var code_text_elapsed_usec := Time.get_ticks_usec() - code_text_started_usec
+	_profile_log(
+		"begin symbol='%s' line=%d col=%d version=%d text_chars=%d text=%.3fms" % [
+			str(request["symbol"]),
+			int(request["line"]) + 1,
+			int(request["column"]) + 1,
+			int(request["code_version"]),
+			code_text.length(),
+			_usec_to_msec(code_text_elapsed_usec),
+		]
 	)
-	if fallback_references.is_empty():
+
+	var sync_started_usec := Time.get_ticks_usec()
+	var sync_sent: bool = await _lsp_service.sync_document(uri, code_text)
+	_profile_log("sync_document sent=%s took %.3fms total=%.3fms" % [
+		str(sync_sent),
+		_usec_to_msec(Time.get_ticks_usec() - sync_started_usec),
+		_usec_to_msec(Time.get_ticks_usec() - request_started_usec),
+	])
+
+	var highlights_started_usec := Time.get_ticks_usec()
+	var highlight_response = await _lsp_service.document_highlight(
+		uri,
+		int(request["line"]),
+		int(request["column"])
+	)
+	_profile_log("document_highlight took %.3fms total=%.3fms" % [
+		_usec_to_msec(Time.get_ticks_usec() - highlights_started_usec),
+		_usec_to_msec(Time.get_ticks_usec() - request_started_usec),
+	])
+	if not _request_matches_current(request):
+		_profile_log("stale response ignored total=%.3fms" % _usec_to_msec(Time.get_ticks_usec() - request_started_usec))
+		return
+	if not highlight_response.ok:
+		_profile_log("request failed total=%.3fms error=%s" % [
+			_usec_to_msec(Time.get_ticks_usec() - request_started_usec),
+			str(highlight_response.error),
+		])
 		_clear_references()
 		return
 
-	_set_usage_references(fallback_references, _code.get_line_count(), {
+	_apply_document_highlights(highlight_response.result, request, request_started_usec)
+
+
+func _apply_document_highlights(document_highlights: Variant, request: Dictionary, request_started_usec: int = 0) -> void:
+	if not _request_matches_current(request):
+		return
+
+	var apply_started_usec := Time.get_ticks_usec()
+	var current_reference := {
 		"line": int(request["line"]),
 		"column": int(request["column"]),
 		"end_line": int(request["end_line"]),
 		"end_column": int(request["end_column"]),
-	})
+	}
+	var convert_started_usec := Time.get_ticks_usec()
+	var filtered_references := _references_from_document_highlights(document_highlights)
+	var convert_elapsed_usec := Time.get_ticks_usec() - convert_started_usec
+	if filtered_references.is_empty():
+		_profile_log("convert empty convert=%.3fms total=%.3fms" % [
+			_usec_to_msec(convert_elapsed_usec),
+			_usec_to_msec(_elapsed_since(request_started_usec)),
+		])
+		_clear_references()
+		return
+
+	filtered_references = _references_including_current(filtered_references, current_reference)
+	_set_usage_references(filtered_references, _code.get_line_count(), current_reference)
+	_profile_log("apply refs=%d convert=%.3fms apply=%.3fms total=%.3fms" % [
+		filtered_references.size(),
+		_usec_to_msec(convert_elapsed_usec),
+		_usec_to_msec(Time.get_ticks_usec() - apply_started_usec),
+		_usec_to_msec(_elapsed_since(request_started_usec)),
+	])
+
+
+func _references_from_document_highlights(document_highlights: Variant) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if typeof(document_highlights) != TYPE_ARRAY:
+		return result
+
+	for document_highlight in document_highlights:
+		if typeof(document_highlight) != TYPE_DICTIONARY:
+			continue
+
+		var highlight: Dictionary = document_highlight
+		if not highlight.has("range") or typeof(highlight["range"]) != TYPE_DICTIONARY:
+			continue
+
+		var highlight_range: Dictionary = highlight["range"]
+		if (
+			not highlight_range.has("start")
+			or not highlight_range.has("end")
+			or typeof(highlight_range["start"]) != TYPE_DICTIONARY
+			or typeof(highlight_range["end"]) != TYPE_DICTIONARY
+		):
+			continue
+
+		var start: Dictionary = highlight_range["start"]
+		var end: Dictionary = highlight_range["end"]
+		result.append({
+			"line": int(start.get("line", -1)),
+			"column": int(start.get("character", -1)),
+			"end_line": int(end.get("line", -1)),
+			"end_column": int(end.get("character", -1)),
+		})
+
+	return result
 
 
 func _request_matches_current(request: Dictionary) -> bool:
@@ -333,6 +430,8 @@ func _request_matches_current(request: Dictionary) -> bool:
 	if request.get("uri", "") != _uri:
 		return false
 	if int(request.get("code_version", -1)) != _code.get_version():
+		return false
+	if int(request.get("generation", -1)) != _request_generation:
 		return false
 
 	var current_symbol := SymbolUsageModel.symbol_range_in_line(
@@ -358,6 +457,7 @@ func _on_code_caret_changed() -> void:
 
 
 func _on_code_text_changed() -> void:
+	_request_generation += 1
 	_current_symbol_key = ""
 	_clear_references()
 	_overlays_dirty = true
@@ -478,6 +578,29 @@ func _same_usage_references(references: Array[Dictionary], line_count: int, curr
 	return true
 
 
+func _references_including_current(references: Array[Dictionary], current_reference: Dictionary) -> Array[Dictionary]:
+	var result := references.duplicate()
+	for reference in result:
+		if SymbolUsageModel.same_position(reference, current_reference):
+			return result
+
+	for index in result.size():
+		if _compare_reference_positions(current_reference, result[index]) < 0:
+			result.insert(index, current_reference.duplicate())
+			return result
+
+	result.append(current_reference.duplicate())
+	return result
+
+
+func _compare_reference_positions(a: Dictionary, b: Dictionary) -> int:
+	var line_delta := int(a.get("line", 0)) - int(b.get("line", 0))
+	if line_delta != 0:
+		return line_delta
+
+	return int(a.get("column", 0)) - int(b.get("column", 0))
+
+
 static func stripe_rect_for_scrollbars(
 	code_size: Vector2,
 	vertical_scrollbar_rect: Rect2,
@@ -543,7 +666,7 @@ func _get_code_text(code: CodeEdit) -> String:
 
 
 func _is_enabled() -> bool:
-	return _is_stripe_enabled() or _is_highlight_enabled()
+	return should_run_controller(_is_stripe_enabled(), _is_highlight_enabled())
 
 
 func _is_stripe_enabled() -> bool:
@@ -557,6 +680,10 @@ func _is_stripe_enabled() -> bool:
 	return bool(settings.get_setting(_enabled_setting))
 
 
+static func should_run_controller(stripe_enabled: bool, highlight_enabled: bool) -> bool:
+	return stripe_enabled or highlight_enabled
+
+
 func _get_editor_settings():
 	if not Engine.is_editor_hint():
 		return null
@@ -568,3 +695,21 @@ func _get_editor_settings():
 		return null
 
 	return editor_interface.get_editor_settings()
+
+
+func _profile_log(message: String) -> void:
+	if not PROFILE_LOGS_ENABLED:
+		return
+
+	print("%s %s" % [PROFILE_LOG_PREFIX, message])
+
+
+func _elapsed_since(started_usec: int) -> int:
+	if started_usec <= 0:
+		return 0
+
+	return Time.get_ticks_usec() - started_usec
+
+
+func _usec_to_msec(usec: int) -> float:
+	return float(usec) / 1000.0

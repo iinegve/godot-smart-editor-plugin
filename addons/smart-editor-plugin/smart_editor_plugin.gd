@@ -7,6 +7,7 @@ const LocalVariableExtractionController := preload("res://addons/smart-editor-pl
 const SymbolRenamingController := preload("res://addons/smart-editor-plugin/controllers/symbol_renaming_controller.gd")
 const LocalVariableInliningController := preload("res://addons/smart-editor-plugin/controllers/local_variable_inlining_controller.gd")
 const SmartSymbolUsageController := preload("res://addons/smart-editor-plugin/controllers/smart_symbol_usage_controller.gd")
+const LspSymbolUsageController := preload("res://addons/smart-editor-plugin/controllers/lsp_symbol_usage_controller.gd")
 const SmartFunctionBoundaryGuidesController := preload("res://addons/smart-editor-plugin/controllers/smart_function_boundary_guides_controller.gd")
 const CallHierarchyController := preload("res://addons/smart-editor-plugin/controllers/call_hierarchy_controller.gd")
 const SmartEditorLspService := preload("res://addons/smart-editor-plugin/common/lsp/smart_editor_lsp_service.gd")
@@ -45,20 +46,32 @@ func _enter_tree() -> void:
 
 	_local_variable_inlining_controller = LocalVariableInliningController.new()
 	_local_variable_inlining_controller.name = "LocalVariableInliningController"
+	_local_variable_inlining_controller.configure(_lsp_service)
 	add_child(_local_variable_inlining_controller)
 
-	_symbol_usage_controller = SmartSymbolUsageController.new()
-	_symbol_usage_controller.name = "SmartSymbolUsageController"
-	add_child(_symbol_usage_controller)
-	_symbol_usage_controller.configure(
-		SmartEditorSettings.SETTING_SYMBOL_USAGE_STRIPE_ENABLED,
-		SmartEditorSettings.HOST,
-		SmartEditorSettings.PORT,
-		SmartEditorSettings.SETTING_SYMBOL_USAGE_HIGHLIGHT_ENABLED,
-		SmartEditorSettings.SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR,
-		SmartEditorSettings.SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR,
-		SmartEditorSettings.SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR
-	)
+	if _supports_lsp_document_highlight():
+		_symbol_usage_controller = LspSymbolUsageController.new()
+		_symbol_usage_controller.name = "LspSymbolUsageController"
+		add_child(_symbol_usage_controller)
+		_symbol_usage_controller.configure(
+			SmartEditorSettings.SETTING_SYMBOL_USAGE_STRIPE_ENABLED,
+			_lsp_service,
+			SmartEditorSettings.SETTING_SYMBOL_USAGE_HIGHLIGHT_ENABLED,
+			SmartEditorSettings.SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR,
+			SmartEditorSettings.SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR,
+			SmartEditorSettings.SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR
+		)
+	else:
+		_symbol_usage_controller = SmartSymbolUsageController.new()
+		_symbol_usage_controller.name = "SmartSymbolUsageController"
+		add_child(_symbol_usage_controller)
+		_symbol_usage_controller.configure(
+			SmartEditorSettings.SETTING_SYMBOL_USAGE_STRIPE_ENABLED,
+			SmartEditorSettings.SETTING_SYMBOL_USAGE_HIGHLIGHT_ENABLED,
+			SmartEditorSettings.SETTING_SYMBOL_USAGE_HIGHLIGHT_COLOR,
+			SmartEditorSettings.SETTING_SYMBOL_USAGE_CURRENT_HIGHLIGHT_COLOR,
+			SmartEditorSettings.SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR
+		)
 
 	_call_hierarchy_controller = CallHierarchyController.new()
 	_call_hierarchy_controller.name = "SmartCallHierarchyController"
@@ -102,3 +115,11 @@ func _exit_tree() -> void:
 	if _lsp_service != null:
 		_lsp_service.queue_free()
 		_lsp_service = null
+
+
+func _supports_lsp_document_highlight() -> bool:
+	var version := Engine.get_version_info()
+	var major := int(version.get("major", 0))
+	var minor := int(version.get("minor", 0))
+
+	return major > 4 or (major == 4 and minor >= 7)

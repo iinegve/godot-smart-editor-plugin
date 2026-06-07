@@ -5,96 +5,77 @@ const SmartEditorLspService := preload("res://addons/smart-editor-plugin/common/
 const URI := "file:///project/unit.gd"
 
 
-class FakeLspClient:
+class FakeLspTransport:
 	extends RefCounted
 
-	var initialized := true
-	var sent_requests: Array[Dictionary] = []
-	var queued_responses: Array[Dictionary] = []
-	var synced_documents: Array[Dictionary] = []
-	var signatures := {}
+	var status := StreamPeerTCP.STATUS_CONNECTED
+	var connect_result := true
+	var sent_messages: Array[Dictionary] = []
+	var queued_messages: Array[Dictionary] = []
+	var connect_calls := 0
+	var disconnect_calls := 0
 
-	func configure(_name: String, _host: String, _port: int, _capabilities: Dictionary, _debug_callback: Callable = Callable()) -> void:
-		pass
+
+	func connect_to_host(_host: String, _port: int) -> bool:
+		connect_calls += 1
+		if connect_result:
+			status = StreamPeerTCP.STATUS_CONNECTED
+		return connect_result
+
 
 	func disconnect_from_host() -> void:
-		pass
+		disconnect_calls += 1
+		status = StreamPeerTCP.STATUS_NONE
 
-	func is_initialized() -> bool:
-		return initialized
-
-	func ensure_connection(_report_errors: bool = false) -> bool:
-		return true
 
 	func get_status() -> int:
-		return StreamPeerTCP.STATUS_CONNECTED
+		return status
 
-	func has_pending_requests() -> bool:
-		return false
 
 	func poll() -> Array[Dictionary]:
-		var responses: Array[Dictionary] = []
-		responses.assign(queued_responses)
-		queued_responses.clear()
-		return responses
+		var messages: Array[Dictionary] = []
+		messages.assign(queued_messages)
+		queued_messages.clear()
+		return messages
 
-	func send_request(kind: String, method: String, params: Dictionary, context: Dictionary = {}) -> int:
-		var request_id := sent_requests.size() + 1
-		sent_requests.append({
-			"id": request_id,
-			"kind": kind,
-			"method": method,
-			"params": params,
-			"context": context,
-		})
-		return request_id
 
-	func sync_document(uri: String, text: String, language_id: String = "gdscript") -> bool:
-		var signature := "%d:%d" % [text.length(), text.hash()]
-		if str(signatures.get(uri, "")) == signature:
-			return false
+	func send_message(message: Dictionary) -> void:
+		sent_messages.append(message)
 
-		signatures[uri] = signature
-		synced_documents.append({
-			"uri": uri,
-			"text": text,
-			"language_id": language_id,
-		})
-		return true
 
 	func queue_response(id: int, result: Variant) -> void:
-		queued_responses.append({
-			"message": {
-				"id": id,
-				"result": result,
-			},
+		queued_messages.append({
+			"jsonrpc": "2.0",
+			"id": id,
+			"result": result,
 		})
+
 
 	func queue_error(id: int, error: Variant) -> void:
-		queued_responses.append({
-			"message": {
-				"id": id,
-				"error": error,
-			},
+		queued_messages.append({
+			"jsonrpc": "2.0",
+			"id": id,
+			"error": error,
 		})
 
 
-func test_ensure_ready_waits_until_client_is_initialized() -> void:
-	var service := _service_with_fake_lsp()
-	var fake: FakeLspClient = service._lsp
-	fake.initialized = false
+func test_ensure_ready_waits_until_initialize_response_arrives() -> void:
+	var service := _service_with_fake_transport(false)
+	var fake: FakeLspTransport = service._transport
 
-	get_tree().create_timer(0.01).timeout.connect(func(): fake.initialized = true)
+	get_tree().create_timer(0.01).timeout.connect(func(): fake.queue_response(1, {"capabilities": {}}))
 	var response = await service.ensure_ready()
 
 	assert_bool(response.ok).is_true()
+	assert_str(fake.sent_messages[0]["method"]).is_equal("initialize")
+	assert_str(fake.sent_messages[1]["method"]).is_equal("initialized")
 
 	service.free()
 
 
 func test_rename_resolves_matching_response_id() -> void:
-	var service := _service_with_fake_lsp()
-	var fake: FakeLspClient = service._lsp
+	var service := _service_with_fake_transport()
+	var fake: FakeLspTransport = service._transport
 
 	var pending = service.send_request_for_test("rename", "textDocument/rename", {
 		"textDocument": {
@@ -112,14 +93,14 @@ func test_rename_resolves_matching_response_id() -> void:
 
 	assert_bool(response.ok).is_true()
 	assert_dict(response.result).is_equal({"changes": {}})
-	assert_str(fake.sent_requests[0]["method"]).is_equal("textDocument/rename")
+	assert_str(fake.sent_messages[0]["method"]).is_equal("textDocument/rename")
 
 	service.free()
 
 
 func test_out_of_order_responses_resolve_the_correct_request() -> void:
-	var service := _service_with_fake_lsp()
-	var fake: FakeLspClient = service._lsp
+	var service := _service_with_fake_transport()
+	var fake: FakeLspTransport = service._transport
 
 	var first_pending = service.send_request_for_test("rename", "textDocument/rename", {
 		"textDocument": {
@@ -160,8 +141,8 @@ func test_out_of_order_responses_resolve_the_correct_request() -> void:
 
 
 func test_error_response_returns_failure() -> void:
-	var service := _service_with_fake_lsp()
-	var fake: FakeLspClient = service._lsp
+	var service := _service_with_fake_transport()
+	var fake: FakeLspTransport = service._transport
 
 	var pending = service.send_request_for_test("prepare_rename", "textDocument/prepareRename", {
 		"textDocument": {
@@ -183,21 +164,23 @@ func test_error_response_returns_failure() -> void:
 
 
 func test_duplicate_sync_document_with_unchanged_text_is_not_sent_twice() -> void:
-	var service := _service_with_fake_lsp()
-	var fake: FakeLspClient = service._lsp
+	var service := _service_with_fake_transport()
+	var fake: FakeLspTransport = service._transport
 
 	var first_synced: bool = await service.sync_document(URI, "func value():\n\tpass")
 	var second_synced: bool = await service.sync_document(URI, "func value():\n\tpass")
 
 	assert_bool(first_synced).is_true()
 	assert_bool(second_synced).is_false()
-	assert_int(fake.synced_documents.size()).is_equal(1)
+	assert_int(fake.sent_messages.size()).is_equal(1)
+	assert_str(fake.sent_messages[0]["method"]).is_equal("textDocument/didOpen")
 
 	service.free()
 
 
-func _service_with_fake_lsp() -> SmartEditorLspService:
+func _service_with_fake_transport(initialized: bool = true) -> SmartEditorLspService:
 	var service := SmartEditorLspService.new()
 	add_child(service)
-	service.set_lsp_client_for_test(FakeLspClient.new())
+	service.set_transport_for_test(FakeLspTransport.new())
+	service._initialized = initialized
 	return service

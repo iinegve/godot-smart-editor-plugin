@@ -1,10 +1,10 @@
 @tool
 extends Node
 
-const LspClient := preload("res://addons/smart-editor-plugin/common/lsp_client.gd")
 const SmartEditorFiles := preload("res://addons/smart-editor-plugin/common/smart_editor_files.gd")
 const SmartEditorLspPendingRequest := preload("res://addons/smart-editor-plugin/common/lsp/smart_editor_lsp_pending_request.gd")
 const SmartEditorLspResponse := preload("res://addons/smart-editor-plugin/common/lsp/smart_editor_lsp_response.gd")
+const SmartEditorLspTransport := preload("res://addons/smart-editor-plugin/common/lsp/smart_editor_lsp_transport.gd")
 
 const DEFAULT_HOST := "127.0.0.1"
 const DEFAULT_PORT := 6005
@@ -12,25 +12,29 @@ const PREWARM_RETRY_USEC := 1_000_000
 
 var _host := DEFAULT_HOST
 var _port := DEFAULT_PORT
-var _lsp = LspClient.new()
+var _transport = SmartEditorLspTransport.new()
 var _pending_requests := {}
+var _next_id := 1
+var _initialized := false
+var _initialize_request_id := -1
 var _prewarm_pending := true
 var _last_prewarm_attempt_usec := 0
+var _opened_documents := {}
+var _document_versions := {}
+var _document_text_signatures := {}
 
 
 func configure(host: String = DEFAULT_HOST, port: int = DEFAULT_PORT) -> void:
 	_host = host
 	_port = port
-	_configure_lsp_client()
 
 
 func _enter_tree() -> void:
-	_configure_lsp_client()
 	set_process(true)
 
 
 func _exit_tree() -> void:
-	_lsp.disconnect_from_host()
+	_transport.disconnect_from_host()
 
 
 func _process(_delta: float) -> void:
@@ -39,17 +43,24 @@ func _process(_delta: float) -> void:
 
 
 func ensure_ready():
-	if _lsp.is_initialized():
+	if _is_ready():
 		return SmartEditorLspResponse.success(true)
 
-	if not _lsp.ensure_connection(true):
+	if not _ensure_connection(true):
 		return SmartEditorLspResponse.failure("could not connect to the code analysis service")
 
-	while is_inside_tree() and not _lsp.is_initialized():
+	_send_initialize_request_if_needed()
+	while is_inside_tree() and not _initialized:
 		await get_tree().process_frame
-		if _lsp.get_status() == StreamPeerTCP.STATUS_NONE:
-			if not _lsp.ensure_connection(true):
+		if _is_ready():
+			break
+		if _transport.get_status() == StreamPeerTCP.STATUS_NONE:
+			if not _ensure_connection(true):
 				return SmartEditorLspResponse.failure("could not connect to the code analysis service")
+		_send_initialize_request_if_needed()
+
+	if not _is_ready():
+		return SmartEditorLspResponse.failure("code analysis service is not initialized")
 
 	return SmartEditorLspResponse.success(true)
 
@@ -62,7 +73,7 @@ func sync_document(uri: String, text: String, language_id: String = "gdscript"):
 	if not ready_response.ok:
 		return false
 
-	return _lsp.sync_document(uri, text, language_id)
+	return _sync_document_now(uri, text, language_id)
 
 
 func sync_open_scripts():
@@ -97,7 +108,7 @@ func sync_open_scripts():
 			continue
 
 		var uri := SmartEditorFiles.path_to_file_uri(ProjectSettings.globalize_path(script_path))
-		if _lsp.sync_document(uri, _get_code_text(code)):
+		if _sync_document_now(uri, _get_code_text(code)):
 			synced_any = true
 
 	return synced_any
@@ -143,19 +154,14 @@ func references(uri: String, line: int, column: int, include_declaration: bool =
 	})
 
 
-func _configure_lsp_client() -> void:
-	_lsp.configure("Smart Editor", _host, _port, {
-		"workspace": {
-			"applyEdit": true,
-		},
+func document_highlight(uri: String, line: int, column: int):
+	return await _send_request("document_highlight", "textDocument/documentHighlight", {
 		"textDocument": {
-			"rename": {
-				"dynamicRegistration": false,
-				"prepareSupport": true,
-			},
-			"references": {
-				"dynamicRegistration": false,
-			},
+			"uri": uri,
+		},
+		"position": {
+			"line": line,
+			"character": column,
 		},
 	})
 
@@ -166,29 +172,56 @@ func _send_request(kind: String, method: String, params: Dictionary):
 		return ready_response
 
 	var pending_request = SmartEditorLspPendingRequest.create(kind)
-	var request_id: int = _lsp.send_request(kind, method, params)
-	if request_id == -1:
-		return SmartEditorLspResponse.failure("code analysis service is not initialized")
-
+	var request_id := _send_request_message(method, params)
 	_pending_requests[request_id] = pending_request
 	return await pending_request.completed
 
 
+func _send_request_message(method: String, params: Dictionary) -> int:
+	var request_id := _next_request_id()
+	_transport.send_message({
+		"jsonrpc": "2.0",
+		"id": request_id,
+		"method": method,
+		"params": params,
+	})
+	return request_id
+
+
+func _send_notification(method: String, params: Dictionary) -> void:
+	_transport.send_message({
+		"jsonrpc": "2.0",
+		"method": method,
+		"params": params,
+	})
+
+
 func _process_lsp_messages() -> void:
-	if _lsp.get_status() == StreamPeerTCP.STATUS_NONE:
+	var status := _transport.get_status()
+	if status == StreamPeerTCP.STATUS_NONE:
 		return
 
-	var responses: Array = _lsp.poll()
-	if _lsp.is_initialized():
-		_prewarm_pending = false
+	var messages: Array = _transport.poll()
+	if _transport.get_status() == StreamPeerTCP.STATUS_NONE:
+		_reset_protocol_state()
+		return
 
-	for response in responses:
-		_handle_lsp_response(response)
+	if _transport.get_status() == StreamPeerTCP.STATUS_CONNECTED:
+		_send_initialize_request_if_needed()
+
+	for message in messages:
+		_handle_lsp_message(message)
 
 
-func _handle_lsp_response(response: Dictionary) -> void:
-	var message: Dictionary = response.get("message", {})
-	var request_id := LspClient.normalize_response_id(message.get("id", -1))
+func _handle_lsp_message(message: Dictionary) -> void:
+	if not message.has("id"):
+		return
+
+	var request_id := SmartEditorLspTransport.normalize_response_id(message.get("id", -1))
+	if request_id == _initialize_request_id:
+		_handle_initialize_response(message)
+		return
+
 	if not _pending_requests.has(request_id):
 		return
 
@@ -202,17 +235,32 @@ func _handle_lsp_response(response: Dictionary) -> void:
 	pending_request.complete(SmartEditorLspResponse.success(message.get("result", null)))
 
 
+func _handle_initialize_response(message: Dictionary) -> void:
+	_initialize_request_id = -1
+	if message.has("error"):
+		_initialized = false
+		_prewarm_pending = true
+		return
+
+	_initialized = true
+	_prewarm_pending = false
+	_send_notification("initialized", {})
+
+
 func _prewarm_lsp_connection() -> void:
 	if not _prewarm_pending:
 		return
-	if _lsp.is_initialized():
+	if _is_ready():
 		_prewarm_pending = false
 		return
-	if _lsp.has_pending_requests():
+	if _has_pending_requests():
 		return
 
-	var status := _lsp.get_status()
-	if status == StreamPeerTCP.STATUS_CONNECTED or status == StreamPeerTCP.STATUS_CONNECTING:
+	var status := _transport.get_status()
+	if status == StreamPeerTCP.STATUS_CONNECTED:
+		_send_initialize_request_if_needed()
+		return
+	if status == StreamPeerTCP.STATUS_CONNECTING:
 		return
 
 	var now := Time.get_ticks_usec()
@@ -220,7 +268,115 @@ func _prewarm_lsp_connection() -> void:
 		return
 
 	_last_prewarm_attempt_usec = now
-	_lsp.ensure_connection(false)
+	_ensure_connection(false)
+
+
+func _ensure_connection(_report_errors: bool = false) -> bool:
+	var status := _transport.get_status()
+	if status == StreamPeerTCP.STATUS_CONNECTED or status == StreamPeerTCP.STATUS_CONNECTING:
+		return true
+
+	_reset_protocol_state()
+	return _transport.connect_to_host(_host, _port)
+
+
+func _send_initialize_request_if_needed() -> void:
+	if _initialized or _initialize_request_id != -1:
+		return
+	if _transport.get_status() != StreamPeerTCP.STATUS_CONNECTED:
+		return
+
+	var root_path := ProjectSettings.globalize_path("res://")
+	var root_uri := SmartEditorFiles.path_to_file_uri(root_path)
+	_initialize_request_id = _send_request_message("initialize", {
+		"processId": OS.get_process_id(),
+		"rootUri": root_uri,
+		"capabilities": _capabilities(),
+		"workspaceFolders": [{
+			"uri": root_uri,
+			"name": ProjectSettings.get_setting("application/config/name", "Godot Project"),
+		}],
+	})
+
+
+func _capabilities() -> Dictionary:
+	return {
+		"workspace": {
+			"applyEdit": true,
+		},
+		"textDocument": {
+			"rename": {
+				"dynamicRegistration": false,
+				"prepareSupport": true,
+			},
+			"references": {
+				"dynamicRegistration": false,
+			},
+			"documentHighlight": {
+				"dynamicRegistration": false,
+			},
+		},
+	}
+
+
+func _sync_document_now(uri: String, text: String, language_id: String = "gdscript") -> bool:
+	var signature := SmartEditorLspTransport.text_signature(text)
+	if _opened_documents.has(uri) and str(_document_text_signatures.get(uri, "")) == signature:
+		return false
+
+	var version := int(_document_versions.get(uri, 0)) + 1
+	_document_versions[uri] = version
+
+	if not _opened_documents.has(uri):
+		_opened_documents[uri] = true
+		_document_text_signatures[uri] = signature
+		_send_notification("textDocument/didOpen", {
+			"textDocument": {
+				"uri": uri,
+				"languageId": language_id,
+				"version": version,
+				"text": text,
+			},
+		})
+		return true
+
+	_document_text_signatures[uri] = signature
+	_send_notification("textDocument/didChange", {
+		"textDocument": {
+			"uri": uri,
+			"version": version,
+		},
+		"contentChanges": [{
+			"text": text,
+		}],
+	})
+	return true
+
+
+func _is_ready() -> bool:
+	return _initialized and _transport.get_status() == StreamPeerTCP.STATUS_CONNECTED
+
+
+func _has_pending_requests() -> bool:
+	return _initialize_request_id != -1 or not _pending_requests.is_empty()
+
+
+func _reset_protocol_state() -> void:
+	_initialize_request_id = -1
+	_initialized = false
+	_opened_documents.clear()
+	_document_versions.clear()
+	_document_text_signatures.clear()
+
+	for pending_request in _pending_requests.values():
+		pending_request.complete(SmartEditorLspResponse.failure("code analysis service disconnected"))
+	_pending_requests.clear()
+
+
+func _next_request_id() -> int:
+	var request_id := _next_id
+	_next_id += 1
+	return request_id
 
 
 func _open_code_editors(script_editor: ScriptEditor) -> Array[CodeEdit]:
@@ -261,8 +417,8 @@ func _get_code_text(code: CodeEdit) -> String:
 	return "\n".join(lines)
 
 
-func set_lsp_client_for_test(lsp_client) -> void:
-	_lsp = lsp_client
+func set_transport_for_test(transport) -> void:
+	_transport = transport
 
 
 func process_lsp_messages_for_test() -> void:
@@ -271,6 +427,6 @@ func process_lsp_messages_for_test() -> void:
 
 func send_request_for_test(kind: String, method: String, params: Dictionary):
 	var pending_request = SmartEditorLspPendingRequest.create(kind)
-	var request_id: int = _lsp.send_request(kind, method, params)
+	var request_id := _send_request_message(method, params)
 	_pending_requests[request_id] = pending_request
 	return pending_request

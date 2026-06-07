@@ -3,8 +3,8 @@ extends Node
 
 const SymbolUsageModel := preload("res://addons/smart-editor-plugin/common/smart_symbol_usage_model.gd")
 const SmartEditorSettings := preload("res://addons/smart-editor-plugin/settings/smart_editor_settings.gd")
-const LspClient := preload("res://addons/smart-editor-plugin/common/lsp_client.gd")
 const SmartEditorFiles := preload("res://addons/smart-editor-plugin/common/smart_editor_files.gd")
+const SmartRenameWorkspaceEdit := preload("res://addons/smart-editor-plugin/common/smart_rename_workspace_edit.gd")
 
 const LocalVariableInliningUseCase := preload("res://addons/smart-editor-plugin/features/local_variable_inlining/use_case.gd")
 
@@ -14,23 +14,16 @@ var _uri := ""
 var _symbol := ""
 var _symbol_line := 0
 var _symbol_column := 0
-var _lsp := LspClient.new()
-var _queued := false
+var _lsp_service: Node
 var _use_case := LocalVariableInliningUseCase.new()
 
 
+func configure(lsp_service: Node) -> void:
+	_lsp_service = lsp_service
+
+
 func _enter_tree() -> void:
-	_lsp.configure("Inline Variable", SmartEditorSettings.HOST, SmartEditorSettings.PORT)
 	set_process_shortcut_input(true)
-	set_process(true)
-
-
-func _exit_tree() -> void:
-	_lsp.disconnect_from_host()
-
-
-func _process(_delta: float) -> void:
-	_process_connection()
 
 
 func _shortcut_input(event: InputEvent) -> void:
@@ -47,7 +40,12 @@ func _begin_inline() -> void:
 	if _code == null:
 		return
 
-	_script_path = _get_current_script_path()
+	var current_script := _get_current_script()
+	if current_script == null:
+		print("Inline Variable: could not resolve current script path.")
+		return
+
+	_script_path = str(current_script.resource_path)
 	if _script_path.is_empty():
 		print("Inline Variable: could not resolve current script path.")
 		return
@@ -62,68 +60,30 @@ func _begin_inline() -> void:
 	_symbol_column = symbol_range["column"]
 
 	_uri = SmartEditorFiles.path_to_file_uri(ProjectSettings.globalize_path(_script_path))
-	_queued = true
-
-	if _ensure_connection():
-		_try_send_references_request()
-
-
-func _process_connection() -> void:
-	if _lsp.get_status() == StreamPeerTCP.STATUS_NONE:
+	if _lsp_service == null:
+		print("Inline Variable: code analysis service is not configured.")
 		return
 
-	var responses := _lsp.poll()
-	for response in responses:
-		_handle_response(response)
-	_try_send_references_request()
-
-
-func _ensure_connection() -> bool:
-	var connected := _lsp.ensure_connection(true)
-	if not connected:
-		print("Inline Variable: could not connect to the code analysis service.")
-	return connected
-
-
-func _try_send_references_request() -> void:
-	if not _queued or not _lsp.is_initialized():
-		return
-	if _lsp.has_pending_kind("references"):
+	await _lsp_service.sync_open_scripts()
+	await _lsp_service.sync_document(_uri, _get_code_text(_code))
+	var references_response = await _lsp_service.references(_uri, _symbol_line, _symbol_column, true)
+	if not references_response.ok:
+		print("Inline Variable: request failed: %s" % JSON.stringify(references_response.error))
 		return
 
-	_send_document_sync_notification()
-	_lsp.send_request("references", "textDocument/references", {
-		"textDocument": {
-			"uri": _uri,
-		},
-		"position": {
-			"line": _symbol_line,
-			"character": _symbol_column,
-		},
-		"context": {
-			"includeDeclaration": true,
-		},
-	})
-
-
-func _send_document_sync_notification() -> void:
-	_lsp.sync_document(_uri, _get_code_text(_code))
-
-
-func _handle_response(response: Dictionary) -> void:
-	var request_kind := str(response.get("kind", ""))
-	var message: Dictionary = response.get("message", {})
-
-	if message.has("error"):
-		print("Inline Variable: request failed: %s" % JSON.stringify(message["error"]))
+	if not _apply_from_references(references_response.result):
 		return
 
-	if request_kind == "references":
-		_apply_from_references(message.get("result", []))
-		_queued = false
+	var final_text := _get_code_text(_code)
+	if not SmartRenameWorkspaceEdit.save_code_edit_to_script_path(current_script, _code):
+		print("Inline Variable: could not save %s." % _script_path)
+	await _lsp_service.sync_document(_uri, final_text)
 
 
-func _apply_from_references(references: Variant) -> void:
+func _apply_from_references(references: Variant) -> bool:
+	if _code == null or not is_instance_valid(_code):
+		return false
+
 	var plan := _use_case.build_inline_plan(
 		_get_code_text(_code),
 		_uri,
@@ -134,7 +94,7 @@ func _apply_from_references(references: Variant) -> void:
 	)
 	if plan.has("error"):
 		print("Inline Variable: %s" % str(plan["error"]))
-		return
+		return false
 
 	var edits: Array = plan["edits"]
 	_symbol_line = int(plan["declaration_line"])
@@ -152,6 +112,7 @@ func _apply_from_references(references: Variant) -> void:
 	_code.remove_line_at(_symbol_line)
 	_code.end_complex_operation()
 	_code.deselect()
+	return true
 
 
 func _replace_range_in_code(code: CodeEdit, from_line: int, from_col: int, to_line: int, to_col: int, new_text: String) -> void:
@@ -190,16 +151,12 @@ func _get_current_code_edit() -> CodeEdit:
 	return null
 
 
-func _get_current_script_path() -> String:
+func _get_current_script() -> Script:
 	var script_editor := EditorInterface.get_script_editor()
 	if script_editor == null:
-		return ""
+		return null
 
-	var current_script: Script = script_editor.get_current_script()
-	if current_script != null:
-		return current_script.resource_path
-
-	return ""
+	return script_editor.get_current_script()
 
 
 func _get_code_text(code: CodeEdit) -> String:
