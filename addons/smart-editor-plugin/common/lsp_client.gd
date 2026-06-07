@@ -1,6 +1,8 @@
 @tool
 extends RefCounted
 
+const SmartEditorFiles := preload("res://addons/smart-editor-plugin/common/smart_editor_files.gd")
+
 const DEFAULT_HOST := "127.0.0.1"
 const DEFAULT_PORT := 6005
 
@@ -163,7 +165,7 @@ func disconnect_from_host() -> void:
 
 func _send_initialize_request() -> void:
 	var root_path := ProjectSettings.globalize_path("res://")
-	var root_uri := path_to_file_uri(root_path)
+	var root_uri := SmartEditorFiles.path_to_file_uri(root_path)
 	var id := _next_request_id()
 	_pending_requests[id] = {
 		"kind": "initialize",
@@ -317,14 +319,6 @@ static func parse_content_length(header: String) -> int:
 			return parts[1].strip_edges().to_int()
 
 	return -1
-
-
-static func path_to_file_uri(path: String) -> String:
-	return "file://" + path.uri_encode().replace("%2F", "/")
-
-
-static func file_uri_to_path(uri: String) -> String:
-	return uri.trim_prefix("file://").uri_decode()
 
 
 static func normalize_response_id(id: Variant) -> int:

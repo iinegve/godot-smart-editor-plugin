@@ -4,7 +4,7 @@ extends Node
 const SmartRenameWorkspaceEdit := preload("res://addons/smart-editor-plugin/common/smart_rename_workspace_edit.gd")
 const SymbolUsageModel := preload("res://addons/smart-editor-plugin/common/smart_symbol_usage_model.gd")
 const SmartEditorSettings := preload("res://addons/smart-editor-plugin/settings/smart_editor_settings.gd")
-const LspClient := preload("res://addons/smart-editor-plugin/common/lsp_client.gd")
+const SmartEditorFiles := preload("res://addons/smart-editor-plugin/common/smart_editor_files.gd")
 const GDScriptIdentifierValidator := preload("res://addons/smart-editor-plugin/common/gdscript_identifier_validator.gd")
 const RenameEditSet := preload("res://addons/smart-editor-plugin/features/symbol_renaming/rename_edit_set.gd")
 const RenameFileEdits := preload("res://addons/smart-editor-plugin/features/symbol_renaming/rename_file_edits.gd")
@@ -48,9 +48,9 @@ func _begin_rename() -> void:
 	if script_path.is_empty():
 		print("Rename Symbol: could not resolve current script path.")
 		return
-	var target_uri := _path_to_file_uri(ProjectSettings.globalize_path(script_path))
+	var target_uri := SmartEditorFiles.path_to_file_uri(ProjectSettings.globalize_path(script_path))
 
-	var symbol_target := _get_selected_or_current_symbol_range(_rename_code)
+	var symbol_target := _get_symbol_range_under_caret(_rename_code)
 	if symbol_target.is_empty():
 		print("Rename Symbol: place the caret inside an identifier.")
 		return
@@ -75,7 +75,7 @@ func _create_rename_dialog(rename_symbol: String, target_uri: String, line: int,
 	var _rename_name_edit = LineEdit.new()
 	_rename_name_edit.placeholder_text = "New identifier"
 	_rename_name_edit.text_changed.connect(func(new_name: String):
-		var validation_error = _identifier_validation_error(new_name, rename_symbol)
+		var validation_error = _identifier_validator.identifier_validation_error(new_name)
 		_set_identifier_validation_state(_rename_dialog, _rename_error_label, validation_error)
 	)
 	_rename_name_edit.text = rename_symbol
@@ -105,7 +105,8 @@ func _create_rename_dialog(rename_symbol: String, target_uri: String, line: int,
 	_rename_dialog.add_child(box)
 	EditorInterface.get_base_control().add_child(_rename_dialog)
 
-	var validation_error = _identifier_validation_error(_rename_name_edit.text, rename_symbol)
+	#var validation_error = _identifier_validation_error(_rename_name_edit.text, rename_symbol)
+	var validation_error = _identifier_validator.identifier_validation_error(_rename_name_edit.text)
 	_set_identifier_validation_state(_rename_dialog, _rename_error_label, validation_error)
 	_rename_dialog.min_size = Vector2i(IDENTIFIER_DIALOG_WIDTH, 0)
 	_rename_dialog.popup_centered(Vector2i(IDENTIFIER_DIALOG_WIDTH, IDENTIFIER_DIALOG_HEIGHT))
@@ -297,7 +298,7 @@ func _open_script_buffers_by_uri(affected_rename_edits: RenameEditSet = null) ->
 		if script_path.is_empty():
 			continue
 
-		var uri := _path_to_file_uri(ProjectSettings.globalize_path(script_path))
+		var uri := SmartEditorFiles.path_to_file_uri(ProjectSettings.globalize_path(script_path))
 		if filter_by_edits and not affected_rename_edits.contains_uri(uri):
 			continue
 
@@ -381,7 +382,7 @@ func _reload_script_resource(script: Script) -> void:
 
 
 func _sync_script_resource_for_uri(uri: String, text: String) -> void:
-	var path := _file_uri_to_path(uri)
+	var path := SmartEditorFiles.file_uri_to_path(uri)
 	if path.get_extension() != "gd":
 		return
 
@@ -392,12 +393,8 @@ func _sync_script_resource_for_uri(uri: String, text: String) -> void:
 		return
 
 
-func _file_uri_to_path(uri: String) -> String:
-	return LspClient.file_uri_to_path(uri)
-
-
 func _display_uri(uri: String) -> String:
-	var path := _file_uri_to_path(uri)
+	var path := SmartEditorFiles.file_uri_to_path(uri)
 	var localized := ProjectSettings.localize_path(path)
 	if localized == path:
 		return path
@@ -406,7 +403,7 @@ func _display_uri(uri: String) -> String:
 
 
 func _apply_text_edits_to_file(uri: String, edits: Array[RenameTextEdit]) -> String:
-	var path := _file_uri_to_path(uri)
+	var path := SmartEditorFiles.file_uri_to_path(uri)
 	var source_file := FileAccess.open(path, FileAccess.READ)
 	if source_file == null:
 		print("Rename Symbol: could not read %s." % _display_uri(uri))
@@ -420,10 +417,6 @@ func _apply_text_edits_to_file(uri: String, edits: Array[RenameTextEdit]) -> Str
 		return ""
 
 	return updated_text
-
-
-func _path_to_file_uri(path: String) -> String:
-	return LspClient.path_to_file_uri(path)
 
 
 func _get_current_code_edit() -> CodeEdit:
@@ -451,40 +444,9 @@ func _get_code_text(code: CodeEdit) -> String:
 
 
 func _get_symbol_range_under_caret(code: CodeEdit) -> RenameSymbolTarget:
-	# todo: seems like this thing checks if symbol at the caret is 
-	#  available for manipulation (not part of the gdscript language)
 	var symbol_range := SymbolUsageModel.symbol_range_in_line(
 		code.get_line(code.get_caret_line()),
 		code.get_caret_line(),
 		code.get_caret_column()
 	)
 	return RenameSymbolTarget.from_symbol_range(symbol_range)
-
-
-func _get_selected_or_current_symbol_range(code: CodeEdit) -> RenameSymbolTarget:
-	if code.has_selection():
-		var selected := code.get_selected_text()
-		var from_line := code.get_selection_from_line()
-		var from_col := code.get_selection_from_column()
-		var to_line := code.get_selection_to_line()
-		var to_col := code.get_selection_to_column()
-		if (
-			# todo: what this if actually mean? what does it check?
-			_is_valid_identifier(selected) # todo: why do we need to check if it's valid if I want to rename it anyway?
-			and from_line == to_line
-			and RenameSymbolTarget.is_selection_reference_in_text(
-				_get_code_text(code), selected, from_line, from_col, to_line, to_col
-			)
-		):
-			return RenameSymbolTarget.create(selected, from_line, from_col)
-
-	# todo: how is this thing different from what's under if statement
-	return _get_symbol_range_under_caret(code)
-
-
-func _is_valid_identifier(value: String) -> bool:
-	return _identifier_validator.is_valid_identifier(value)
-
-
-func _identifier_validation_error(value: String, _current_name: String = "") -> String:
-	return _identifier_validator.identifier_validation_error(value)

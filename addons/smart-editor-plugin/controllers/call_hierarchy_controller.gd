@@ -1,7 +1,7 @@
 @tool
 extends Node
 
-const LspClient := preload("res://addons/smart-editor-plugin/common/lsp_client.gd")
+const SmartEditorFiles := preload("res://addons/smart-editor-plugin/common/smart_editor_files.gd")
 const SETTINGS_PREFIX := &"plugin/smart_editor/"
 const SETTING_CALL_HIERARCHY_PREFIX := SETTINGS_PREFIX + &"call_hierarchy/"
 const STANDALONE_SETTINGS_PREFIX := &"plugin/call_hierarchy/"
@@ -369,7 +369,7 @@ func _begin_call_hierarchy() -> void:
 		print("Call Hierarchy: could not resolve current script path.")
 		return
 
-	_current_uri = _path_to_file_uri(ProjectSettings.globalize_path(script_path))
+	_current_uri = SmartEditorFiles.path_to_file_uri(ProjectSettings.globalize_path(script_path))
 	_file_cache.clear()
 	_script_display_name_cache.clear()
 	_tree.clear()
@@ -1128,7 +1128,7 @@ func _get_text_for_uri(uri: String) -> String:
 	if _file_cache.has(uri):
 		return "\n".join(_file_cache[uri])
 
-	var path := _file_uri_to_path(uri)
+	var path := SmartEditorFiles.file_uri_to_path(uri)
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		return ""
@@ -1176,19 +1176,16 @@ func _append_gdscript_file_uris(directory_path: String, uris: Array[String]) -> 
 		if directory.current_is_dir():
 			_append_gdscript_file_uris(child_path, uris)
 		elif entry.get_extension().to_lower() == "gd":
-			uris.append(_path_to_file_uri(ProjectSettings.globalize_path(child_path)))
+			uris.append(SmartEditorFiles.path_to_file_uri(ProjectSettings.globalize_path(child_path)))
 
 		entry = directory.get_next()
 	directory.list_dir_end()
 
 
-func _file_uri_to_path(uri: String) -> String:
-	return LspClient.file_uri_to_path(uri)
-
-
 func _display_location(uri: String, line_index: int) -> String:
-	var path := ProjectSettings.localize_path(_file_uri_to_path(uri))
-	if path == _file_uri_to_path(uri):
+	var raw_path := SmartEditorFiles.file_uri_to_path(uri)
+	var path := ProjectSettings.localize_path(raw_path)
+	if path == raw_path:
 		path = path.get_file()
 	return "%s:%d" % [path, line_index + 1]
 
@@ -1245,7 +1242,7 @@ func _is_constructor_method(method_name: String) -> bool:
 
 
 func _open_script_location(uri: String, line_index: int, column: int) -> void:
-	var path := ProjectSettings.localize_path(_file_uri_to_path(uri))
+	var path := ProjectSettings.localize_path(SmartEditorFiles.file_uri_to_path(uri))
 	var script := load(path)
 	if script == null:
 		print("Call Hierarchy: could not open %s." % path)
@@ -1265,11 +1262,6 @@ func _focus_script_location(line_index: int, column: int) -> void:
 	code.set_caret_column(maxi(column, 0))
 	if code.has_method("center_viewport_to_caret"):
 		code.center_viewport_to_caret()
-
-
-func _path_to_file_uri(path: String) -> String:
-	return LspClient.path_to_file_uri(path)
-
 
 func _get_current_code_edit() -> CodeEdit:
 	var script_editor := EditorInterface.get_script_editor()

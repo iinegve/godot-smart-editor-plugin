@@ -1,7 +1,7 @@
 extends GdUnitTestSuite
 
 const CallHierarchyController := preload("res://addons/smart-editor-plugin/controllers/call_hierarchy_controller.gd")
-const LspClient := preload("res://addons/smart-editor-plugin/common/lsp_client.gd")
+const SmartEditorFiles := preload("res://addons/smart-editor-plugin/common/smart_editor_files.gd")
 
 
 func test_symbol_range_uses_selected_identifier() -> void:
@@ -37,7 +37,7 @@ func test_enclosing_function_symbol_range_finds_nearest_function() -> void:
 
 func test_references_to_callers_keeps_distinct_call_sites_in_same_function() -> void:
 	var controller := CallHierarchyController.new()
-	var uri := LspClient.path_to_file_uri("/project/player.gd")
+	var uri := SmartEditorFiles.path_to_file_uri("/project/player.gd")
 	controller._file_cache[uri] = [
 		"class_name Player",
 		"",
@@ -99,8 +99,8 @@ func test_engine_callback_methods_are_not_loaded_from_lsp() -> void:
 
 func test_call_hierarchy_root_uses_typed_member_receiver_definition() -> void:
 	var controller := CallHierarchyController.new()
-	var level_uri := LspClient.path_to_file_uri("/project/level.gd")
-	var unit_uri := LspClient.path_to_file_uri("/project/unit.gd")
+	var level_uri := SmartEditorFiles.path_to_file_uri("/project/level.gd")
+	var unit_uri := SmartEditorFiles.path_to_file_uri("/project/unit.gd")
 	controller._file_cache[level_uri] = [
 		"class_name Level",
 		"var _selected_squad_member: Unit",
@@ -151,8 +151,8 @@ func test_constructor_call_columns_find_class_name_new_calls() -> void:
 
 func test_constructor_callers_keep_distinct_call_sites_in_same_function() -> void:
 	var controller := CallHierarchyController.new()
-	var player_uri := LspClient.path_to_file_uri("/project/player.gd")
-	var spawner_uri := LspClient.path_to_file_uri("/project/spawner.gd")
+	var player_uri := SmartEditorFiles.path_to_file_uri("/project/player.gd")
+	var spawner_uri := SmartEditorFiles.path_to_file_uri("/project/spawner.gd")
 	controller._file_cache[player_uri] = [
 		"class_name Player",
 		"",

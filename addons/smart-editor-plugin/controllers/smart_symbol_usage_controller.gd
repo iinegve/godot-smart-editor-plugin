@@ -4,6 +4,7 @@ extends Node
 const SymbolUsageModel := preload("res://addons/smart-editor-plugin/common/smart_symbol_usage_model.gd")
 const SymbolUsageHighlight := preload("res://addons/smart-editor-plugin/common/smart_symbol_usage_highlight.gd")
 const LspClient := preload("res://addons/smart-editor-plugin/common/lsp_client.gd")
+const SmartEditorFiles := preload("res://addons/smart-editor-plugin/common/smart_editor_files.gd")
 
 const SymbolUsageStripe := preload("res://addons/smart-editor-plugin/features/highlights/smart_symbol_usage_stripe.gd")
 
@@ -143,7 +144,7 @@ func _attach_to_current_code_edit() -> void:
 	_detach_code_edit()
 	_code = next_code
 	_script_path = next_script_path
-	_uri = _path_to_file_uri(ProjectSettings.globalize_path(_script_path)) if not _script_path.is_empty() else ""
+	_uri = SmartEditorFiles.path_to_file_uri(ProjectSettings.globalize_path(_script_path)) if not _script_path.is_empty() else ""
 
 	if _code == null:
 		return
@@ -716,10 +717,6 @@ func _get_code_text(code: CodeEdit) -> String:
 	for line_index in code.get_line_count():
 		lines.append(code.get_line(line_index))
 	return "\n".join(lines)
-
-
-func _path_to_file_uri(path: String) -> String:
-	return LspClient.path_to_file_uri(path)
 
 
 func _is_enabled() -> bool:

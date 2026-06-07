@@ -4,6 +4,7 @@ extends Node
 const SymbolUsageModel := preload("res://addons/smart-editor-plugin/common/smart_symbol_usage_model.gd")
 const SmartEditorSettings := preload("res://addons/smart-editor-plugin/settings/smart_editor_settings.gd")
 const LspClient := preload("res://addons/smart-editor-plugin/common/lsp_client.gd")
+const SmartEditorFiles := preload("res://addons/smart-editor-plugin/common/smart_editor_files.gd")
 
 const LocalVariableInliningUseCase := preload("res://addons/smart-editor-plugin/features/local_variable_inlining/use_case.gd")
 
@@ -60,7 +61,7 @@ func _begin_inline() -> void:
 	_symbol_line = symbol_range["line"]
 	_symbol_column = symbol_range["column"]
 
-	_uri = LspClient.path_to_file_uri(ProjectSettings.globalize_path(_script_path))
+	_uri = SmartEditorFiles.path_to_file_uri(ProjectSettings.globalize_path(_script_path))
 	_queued = true
 
 	if _ensure_connection():

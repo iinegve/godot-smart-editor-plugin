@@ -2,6 +2,7 @@
 extends Node
 
 const LspClient := preload("res://addons/smart-editor-plugin/common/lsp_client.gd")
+const SmartEditorFiles := preload("res://addons/smart-editor-plugin/common/smart_editor_files.gd")
 const SmartEditorLspPendingRequest := preload("res://addons/smart-editor-plugin/common/lsp/smart_editor_lsp_pending_request.gd")
 const SmartEditorLspResponse := preload("res://addons/smart-editor-plugin/common/lsp/smart_editor_lsp_response.gd")
 
@@ -95,7 +96,7 @@ func sync_open_scripts():
 		if code == null:
 			continue
 
-		var uri := LspClient.path_to_file_uri(ProjectSettings.globalize_path(script_path))
+		var uri := SmartEditorFiles.path_to_file_uri(ProjectSettings.globalize_path(script_path))
 		if _lsp.sync_document(uri, _get_code_text(code)):
 			synced_any = true
 

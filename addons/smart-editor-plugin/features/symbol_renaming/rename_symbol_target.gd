@@ -1,8 +1,5 @@
 extends RefCounted
 
-const SymbolUsageModel := preload("res://addons/smart-editor-plugin/common/smart_symbol_usage_model.gd")
-
-
 var symbol := ""
 var line := -1
 var column := -1
@@ -24,22 +21,6 @@ static func from_symbol_range(symbol_range: Dictionary):
 		int(symbol_range.get("line", -1)),
 		int(symbol_range.get("column", -1))
 	)
-
-
-static func is_selection_reference_in_text(
-	text: String,
-	selected: String,
-	from_line: int,
-	from_column: int,
-	to_line: int,
-	to_column: int
-) -> bool:
-	return SymbolUsageModel.is_identifier_reference_in_text(text, {
-		"line": from_line,
-		"column": from_column,
-		"end_line": to_line,
-		"end_column": to_column,
-	}, selected)
 
 
 func is_empty() -> bool:
