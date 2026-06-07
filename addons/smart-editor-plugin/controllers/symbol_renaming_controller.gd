@@ -83,7 +83,7 @@ func _create_rename_dialog(rename_symbol: String, target_uri: String, line: int,
 
 	_rename_dialog.title = "Rename Symbol"
 	_rename_dialog.ok_button_text = "Rename"
-	_rename_dialog.min_size = Vector2i(_identifier_dialog_width(), 0)
+	_rename_dialog.min_size = Vector2i(IDENTIFIER_DIALOG_WIDTH, 0)
 	_rename_dialog.confirmed.connect(func():
 		_apply_rename(_rename_name_edit.text, rename_symbol, target_uri, line, column)
 		_rename_dialog.queue_free()
@@ -107,16 +107,11 @@ func _create_rename_dialog(rename_symbol: String, target_uri: String, line: int,
 
 	var validation_error = _identifier_validation_error(_rename_name_edit.text, rename_symbol)
 	_set_identifier_validation_state(_rename_dialog, _rename_error_label, validation_error)
-	_rename_dialog.min_size = Vector2i(_identifier_dialog_width(), 0)
-	_rename_dialog.popup_centered(Vector2i(_identifier_dialog_width(), IDENTIFIER_DIALOG_HEIGHT))
+	_rename_dialog.min_size = Vector2i(IDENTIFIER_DIALOG_WIDTH, 0)
+	_rename_dialog.popup_centered(Vector2i(IDENTIFIER_DIALOG_WIDTH, IDENTIFIER_DIALOG_HEIGHT))
 
 	_rename_name_edit.grab_focus()
 	pass
-
-
-func _identifier_dialog_width() -> int:
-	var dialog_width = int(SmartEditorSettings.get_setting(SmartEditorSettings.SETTING_DIALOG_WIDTH, 420))
-	return maxi(dialog_width, IDENTIFIER_DIALOG_WIDTH)
 
 
 func _apply_rename(

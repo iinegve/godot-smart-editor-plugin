@@ -64,8 +64,8 @@ func _begin_extract() -> void:
 	_name_edit.text = _use_case.suggest_name(_expression)
 	_name_edit.select_all()
 	_refresh_identifier_validation()
-	_dialog.min_size = Vector2i(_identifier_dialog_width(), 0)
-	_dialog.popup_centered(Vector2i(_identifier_dialog_width(), IDENTIFIER_DIALOG_HEIGHT))
+	_dialog.min_size = Vector2i(IDENTIFIER_DIALOG_WIDTH, 0)
+	_dialog.popup_centered(Vector2i(IDENTIFIER_DIALOG_WIDTH, IDENTIFIER_DIALOG_HEIGHT))
 	call_deferred("_refresh_identifier_validation")
 	_name_edit.grab_focus()
 
@@ -143,7 +143,7 @@ func _create_dialog() -> void:
 	_dialog = ConfirmationDialog.new()
 	_dialog.title = "Extract Local Variable"
 	_dialog.ok_button_text = "Extract"
-	_dialog.min_size = Vector2i(_identifier_dialog_width(), 0)
+	_dialog.min_size = Vector2i(IDENTIFIER_DIALOG_WIDTH, 0)
 	_dialog.confirmed.connect(_apply_extract)
 
 	var box := VBoxContainer.new()
@@ -204,14 +204,6 @@ func _free_dialog(dialog: Window) -> void:
 	if parent != null:
 		parent.remove_child(dialog)
 	dialog.queue_free()
-
-
-func _dialog_width() -> int:
-	return int(SmartEditorSettings.get_setting(SmartEditorSettings.SETTING_DIALOG_WIDTH, 420))
-
-
-func _identifier_dialog_width() -> int:
-	return maxi(_dialog_width(), IDENTIFIER_DIALOG_WIDTH)
 
 
 func _get_selection_range(code: CodeEdit) -> Dictionary:
