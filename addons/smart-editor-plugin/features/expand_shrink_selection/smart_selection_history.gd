@@ -3,32 +3,32 @@ extends RefCounted
 
 const SmartSelectionRange := preload("res://addons/smart-editor-plugin/common/smart_selection_range.gd")
 
-var _history: Array[Dictionary] = []
+var _history: Array[SmartSelectionRange] = []
 
 
-func record(selection_range: Dictionary) -> void:
-	_history.append(selection_range.duplicate())
+func record(selection_range: SmartSelectionRange) -> void:
+	_history.append(selection_range.duplicate_range())
 
 
-func shrink_target(current: Dictionary, candidates: Array[Dictionary]) -> Dictionary:
+func shrink_target(current: SmartSelectionRange, candidates: Array[SmartSelectionRange]) -> SmartSelectionRange:
 	var previous := pop_contained_in(current)
-	if not previous.is_empty():
+	if previous != null:
 		return previous
 	return fallback_inside(current, candidates)
 
 
-func pop_contained_in(current: Dictionary) -> Dictionary:
+func pop_contained_in(current: SmartSelectionRange) -> SmartSelectionRange:
 	while not _history.is_empty():
-		var previous: Dictionary = _history.pop_back()
-		if SmartSelectionRange.contains_or_equal(current, previous):
+		var previous: SmartSelectionRange = _history.pop_back()
+		if current.contains_or_equal(previous):
 			return previous
-	return {}
+	return null
 
 
-func fallback_inside(current: Dictionary, candidates: Array[Dictionary]) -> Dictionary:
-	var result := {}
+func fallback_inside(current: SmartSelectionRange, candidates: Array[SmartSelectionRange]) -> SmartSelectionRange:
+	var result: SmartSelectionRange = null
 	for candidate in candidates:
-		if SmartSelectionRange.strictly_contains(current, candidate):
+		if current.strictly_contains(candidate):
 			result = candidate
 	return result
 

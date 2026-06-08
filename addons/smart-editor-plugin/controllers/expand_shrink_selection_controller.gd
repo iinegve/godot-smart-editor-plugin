@@ -34,27 +34,27 @@ func _shortcut_input(event: InputEvent) -> void:
 func _expand_selection(code: CodeEdit) -> void:
 	var current := _get_current_range(code)
 	var target := _use_case.next_expand_range(_get_code_text(code), current)
-	if not target.is_empty():
+	if target != null:
 		_select_range(code, target)
 
 
 func _shrink_selection(code: CodeEdit) -> void:
 	var current := _get_current_range(code)
 	var target := _use_case.next_shrink_range(_get_code_text(code), current)
-	if not target.is_empty():
+	if target != null:
 		_select_range(code, target)
 
 
-func _get_current_range(code: CodeEdit) -> Dictionary:
+func _get_current_range(code: CodeEdit) -> SmartSelectionRange:
 	if code.has_selection():
-		return SmartSelectionRange.make_range(
+		return SmartSelectionRange.create(
 			code.get_selection_from_line(),
 			code.get_selection_from_column(),
 			code.get_selection_to_line(),
 			code.get_selection_to_column()
 		)
 
-	return SmartSelectionRange.make_range(
+	return SmartSelectionRange.create(
 		code.get_caret_line(),
 		code.get_caret_column(),
 		code.get_caret_line(),
@@ -62,18 +62,18 @@ func _get_current_range(code: CodeEdit) -> Dictionary:
 	)
 
 
-func _select_range(code: CodeEdit, selection_range: Dictionary) -> void:
-	if selection_range["from_line"] == selection_range["to_line"] and selection_range["from_col"] == selection_range["to_col"]:
+func _select_range(code: CodeEdit, selection_range: SmartSelectionRange) -> void:
+	if selection_range.is_zero_width():
 		code.deselect()
-		code.set_caret_line(selection_range["from_line"])
-		code.set_caret_column(selection_range["from_col"])
+		code.set_caret_line(selection_range.from_line)
+		code.set_caret_column(selection_range.from_col)
 		return
 
 	code.select(
-		selection_range["from_line"],
-		selection_range["from_col"],
-		selection_range["to_line"],
-		selection_range["to_col"]
+		selection_range.from_line,
+		selection_range.from_col,
+		selection_range.to_line,
+		selection_range.to_col
 	)
 
 

@@ -1,18 +1,22 @@
 @tool
 extends RefCounted
 
-
-static func make_range(from_line: int, from_col: int, to_line: int, to_col: int) -> Dictionary:
-	return {
-		"from_line": from_line,
-		"from_col": from_col,
-		"to_line": to_line,
-		"to_col": to_col,
-	}
+var from_line := 0
+var from_col := 0
+var to_line := 0
+var to_col := 0
 
 
-static func from_node(node: Dictionary) -> Dictionary:
-	return make_range(
+static func create(new_from_line: int, new_from_col: int, new_to_line: int, new_to_col: int):
+	var selection_range := new()
+	selection_range.configure(new_from_line, new_from_col, new_to_line, new_to_col)
+	return selection_range
+
+
+static func from_node(node: Dictionary):
+	if node.is_empty():
+		return null
+	return create(
 		int(node["from_line"]),
 		int(node["from_col"]),
 		int(node["to_line"]),
@@ -20,40 +24,44 @@ static func from_node(node: Dictionary) -> Dictionary:
 	)
 
 
-static func contains_or_equal(outer: Dictionary, inner: Dictionary) -> bool:
-	if compare_positions(outer["from_line"], outer["from_col"], inner["from_line"], inner["from_col"]) > 0:
+func configure(new_from_line: int, new_from_col: int, new_to_line: int, new_to_col: int) -> void:
+	from_line = new_from_line
+	from_col = new_from_col
+	to_line = new_to_line
+	to_col = new_to_col
+
+
+func duplicate_range():
+	return create(from_line, from_col, to_line, to_col)
+
+
+func contains_or_equal(inner) -> bool:
+	if compare_positions(from_line, from_col, inner.from_line, inner.from_col) > 0:
 		return false
-	if compare_positions(outer["to_line"], outer["to_col"], inner["to_line"], inner["to_col"]) < 0:
+	if compare_positions(to_line, to_col, inner.to_line, inner.to_col) < 0:
 		return false
 	return true
 
 
-static func strictly_contains(outer: Dictionary, inner: Dictionary) -> bool:
-	return contains_or_equal(outer, inner) and not equal(outer, inner)
+func strictly_contains(inner) -> bool:
+	return contains_or_equal(inner) and not equals(inner)
 
 
-static func equal(a: Dictionary, b: Dictionary) -> bool:
+func equals(other) -> bool:
 	return (
-		a["from_line"] == b["from_line"]
-		and a["from_col"] == b["from_col"]
-		and a["to_line"] == b["to_line"]
-		and a["to_col"] == b["to_col"]
+		from_line == other.from_line
+		and from_col == other.from_col
+		and to_line == other.to_line
+		and to_col == other.to_col
 	)
 
 
-static func is_zero_width(selection_range: Dictionary) -> bool:
-	return (
-		selection_range["from_line"] == selection_range["to_line"]
-		and selection_range["from_col"] == selection_range["to_col"]
-	)
+func is_zero_width() -> bool:
+	return from_line == to_line and from_col == to_col
 
 
-static func size(selection_range: Dictionary) -> int:
-	return (
-		(int(selection_range["to_line"]) - int(selection_range["from_line"])) * 10000
-		+ int(selection_range["to_col"])
-		- int(selection_range["from_col"])
-	)
+func size() -> int:
+	return (to_line - from_line) * 10000 + to_col - from_col
 
 
 static func compare_positions(line_a: int, col_a: int, line_b: int, col_b: int) -> int:

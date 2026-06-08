@@ -26,10 +26,10 @@ const KIND_DECLARATION := "declaration"
 const KIND_TYPE := "type"
 const KIND_COMMENT := "comment"
 
-func build_candidates(text: String, current: Dictionary) -> Array[Dictionary]:
+func build_candidates(text: String, current: SmartSelectionRange) -> Array[SmartSelectionRange]:
 	var root := _parse_file(text)
 	var path := _find_smallest_path(root, current)
-	var candidates: Array[Dictionary] = []
+	var candidates: Array[SmartSelectionRange] = []
 	var member_suffix := _member_suffix_range_for_path(path, current)
 	var lines := text.split("\n", true)
 
@@ -767,7 +767,7 @@ func _append_full_line_comment(
 	return comment
 
 
-func _find_smallest_path(root: Dictionary, current: Dictionary) -> Array[Dictionary]:
+func _find_smallest_path(root: Dictionary, current: SmartSelectionRange) -> Array[Dictionary]:
 	if not _node_contains_range(root, current):
 		return []
 
@@ -792,10 +792,10 @@ func _find_smallest_path(root: Dictionary, current: Dictionary) -> Array[Diction
 	return best_child_path
 
 
-func _member_suffix_range_for_path(path: Array[Dictionary], current: Dictionary) -> Dictionary:
+func _member_suffix_range_for_path(path: Array[Dictionary], current: SmartSelectionRange) -> SmartSelectionRange:
 	var chain := _member_chain_info_for_path(path, current)
 	if chain.is_empty():
-		return {}
+		return null
 
 	var segments: Array = chain["segments"]
 	var segment_index := int(chain["segment_index"])
@@ -804,18 +804,18 @@ func _member_suffix_range_for_path(path: Array[Dictionary], current: Dictionary)
 	if segment_index == segments.size() - 1:
 		suffix_start_index = segment_index - 1
 	if suffix_start_index <= 0:
-		return {}
+		return null
 
 	var first_segment: Dictionary = segments[suffix_start_index]
-	return {
-		"from_line": first_segment["from_line"],
-		"from_col": first_segment["from_col"],
-		"to_line": top_member["to_line"],
-		"to_col": top_member["to_col"],
-	}
+	return SmartSelectionRange.create(
+		int(first_segment["from_line"]),
+		int(first_segment["from_col"]),
+		int(top_member["to_line"]),
+		int(top_member["to_col"])
+	)
 
 
-func _is_member_left_prefix_to_skip(path: Array[Dictionary], index: int, current: Dictionary) -> bool:
+func _is_member_left_prefix_to_skip(path: Array[Dictionary], index: int, current: SmartSelectionRange) -> bool:
 	var node: Dictionary = path[index]
 	if node.get("kind", "") != KIND_MEMBER:
 		return false
@@ -840,7 +840,7 @@ func _is_member_left_prefix_to_skip(path: Array[Dictionary], index: int, current
 	)
 
 
-func _is_call_callee_member_to_skip(path: Array[Dictionary], index: int, current: Dictionary) -> bool:
+func _is_call_callee_member_to_skip(path: Array[Dictionary], index: int, current: SmartSelectionRange) -> bool:
 	var node: Dictionary = path[index]
 	if node.get("kind", "") != KIND_MEMBER:
 		return false
@@ -866,13 +866,13 @@ func _is_call_callee_member_to_skip(path: Array[Dictionary], index: int, current
 	return not chain.is_empty() and int(chain["segment_index"]) == member_segments.size() - 1
 
 
-func _call_callee_range_for_selected_member_call(call: Dictionary, current: Dictionary) -> Dictionary:
+func _call_callee_range_for_selected_member_call(call: Dictionary, current: SmartSelectionRange) -> SmartSelectionRange:
 	if not _is_member_call_callee_selected(call, current):
-		return {}
+		return null
 
 	var children: Array = call.get("children", [])
 	if children.size() < 2:
-		return {}
+		return null
 
 	return _node_range(children[0])
 
@@ -885,7 +885,7 @@ func _is_empty_call(call: Dictionary) -> bool:
 	return call.get("kind", "") == KIND_CALL and call.get("children", []).size() == 1
 
 
-func _is_member_call_callee_selected(call: Dictionary, current: Dictionary) -> bool:
+func _is_member_call_callee_selected(call: Dictionary, current: SmartSelectionRange) -> bool:
 	var children: Array = call.get("children", [])
 	if children.is_empty():
 		return false
@@ -929,7 +929,7 @@ func _is_await_operand_call(path: Array[Dictionary], index: int) -> bool:
 	return parent.get("kind", "") == KIND_UNARY and String(parent.get("operator", "")) == "await"
 
 
-func _member_chain_info_for_path(path: Array[Dictionary], current: Dictionary) -> Dictionary:
+func _member_chain_info_for_path(path: Array[Dictionary], current: SmartSelectionRange) -> Dictionary:
 	if path.is_empty():
 		return {}
 
@@ -972,126 +972,126 @@ func _flatten_member_segments(node: Dictionary) -> Array[Dictionary]:
 	return result
 
 
-func _call_suffix_range_for_arguments(call: Dictionary, current: Dictionary) -> Dictionary:
+func _call_suffix_range_for_arguments(call: Dictionary, current: SmartSelectionRange) -> SmartSelectionRange:
 	var children: Array = call.get("children", [])
 	if children.size() < 2:
-		return {}
+		return null
 
 	var callee: Dictionary = children[0]
 	if _range_contains(_node_range(callee), current):
-		return {}
+		return null
 
 	var argument_content := _call_arguments_content_selection_range(call)
-	if argument_content.is_empty() or not _range_contains(argument_content, current):
-		return {}
+	if argument_content == null or not _range_contains(argument_content, current):
+		return null
 
 	var callee_segments := _flatten_member_segments(callee)
 	if callee_segments.size() < 2:
-		return {}
+		return null
 
 	var method_segment: Dictionary = callee_segments.back()
-	return {
-		"from_line": method_segment["from_line"],
-		"from_col": method_segment["from_col"],
-		"to_line": call["to_line"],
-		"to_col": call["to_col"],
-	}
+	return SmartSelectionRange.create(
+		int(method_segment["from_line"]),
+		int(method_segment["from_col"]),
+		int(call["to_line"]),
+		int(call["to_col"])
+	)
 
 
-func _call_suffix_range_for_callee(call: Dictionary, current: Dictionary) -> Dictionary:
+func _call_suffix_range_for_callee(call: Dictionary, current: SmartSelectionRange) -> SmartSelectionRange:
 	var children: Array = call.get("children", [])
 	if children.is_empty():
-		return {}
+		return null
 
 	var callee: Dictionary = children[0]
 	if callee.get("kind", "") != KIND_MEMBER:
-		return {}
+		return null
 
 	var callee_segments := _flatten_member_segments(callee)
 	if callee_segments.size() < 2:
-		return {}
+		return null
 
 	var method_segment: Dictionary = callee_segments.back()
 	if not _range_contains(_node_range(method_segment), current):
-		return {}
+		return null
 
-	return {
-		"from_line": method_segment["from_line"],
-		"from_col": method_segment["from_col"],
-		"to_line": call["to_line"],
-		"to_col": call["to_col"],
-	}
+	return SmartSelectionRange.create(
+		int(method_segment["from_line"]),
+		int(method_segment["from_col"]),
+		int(call["to_line"]),
+		int(call["to_col"])
+	)
 
 
-func _call_arguments_content_range(call: Dictionary, current: Dictionary) -> Dictionary:
+func _call_arguments_content_range(call: Dictionary, current: SmartSelectionRange) -> SmartSelectionRange:
 	var children: Array = call.get("children", [])
 	if children.size() < 3:
-		return {}
+		return null
 
 	var argument_content := _call_arguments_content_selection_range(call)
-	if argument_content.is_empty() or not _range_contains(argument_content, current):
-		return {}
+	if argument_content == null or not _range_contains(argument_content, current):
+		return null
 
 	return argument_content
 
 
-func _call_arguments_content_selection_range(call: Dictionary) -> Dictionary:
+func _call_arguments_content_selection_range(call: Dictionary) -> SmartSelectionRange:
 	var children: Array = call.get("children", [])
 	if children.size() < 2:
-		return {}
+		return null
 
 	var first_argument: Dictionary = children[1]
 	var last_argument: Dictionary = children[children.size() - 1]
-	return {
-		"from_line": first_argument["from_line"],
-		"from_col": first_argument["from_col"],
-		"to_line": last_argument["to_line"],
-		"to_col": last_argument["to_col"],
-	}
+	return SmartSelectionRange.create(
+		int(first_argument["from_line"]),
+		int(first_argument["from_col"]),
+		int(last_argument["to_line"]),
+		int(last_argument["to_col"])
+	)
 
 
-func _parameter_list_content_range(parameter_list: Dictionary, current: Dictionary) -> Dictionary:
+func _parameter_list_content_range(parameter_list: Dictionary, current: SmartSelectionRange) -> SmartSelectionRange:
 	var children: Array = parameter_list.get("children", [])
 	if children.is_empty():
-		return {}
+		return null
 
 	var first_parameter: Dictionary = children[0]
 	var last_parameter: Dictionary = children[children.size() - 1]
-	var content_range := {
-		"from_line": first_parameter["from_line"],
-		"from_col": first_parameter["from_col"],
-		"to_line": last_parameter["to_line"],
-		"to_col": last_parameter["to_col"],
-	}
+	var content_range: SmartSelectionRange = SmartSelectionRange.create(
+		int(first_parameter["from_line"]),
+		int(first_parameter["from_col"]),
+		int(last_parameter["to_line"]),
+		int(last_parameter["to_col"])
+	)
 	if not _range_contains(content_range, current):
-		return {}
+		return null
 	return content_range
 
 
-func _binary_left_operand_range_for_right(binary: Dictionary, current: Dictionary) -> Dictionary:
+func _binary_left_operand_range_for_right(binary: Dictionary, current: SmartSelectionRange) -> SmartSelectionRange:
 	if String(binary.get("operator", "")) != "%":
-		return {}
+		return null
 
 	var children: Array = binary.get("children", [])
 	if children.size() < 2:
-		return {}
+		return null
 
 	var right: Dictionary = children[1]
 	if not _range_contains(_node_range(right), current):
-		return {}
+		return null
 
 	return _node_range(children[0])
 
 
-func _block_body_range(block: Dictionary, current: Dictionary) -> Dictionary:
+func _block_body_range(block: Dictionary, current: SmartSelectionRange) -> SmartSelectionRange:
 	var children: Array = block.get("children", [])
 	if children.size() < 2:
-		return {}
+		return null
 
 	var body_children := children.slice(1)
 	var containing_index := _body_child_index_for_range(body_children, current)
 	if containing_index == -1:
-		return {}
+		return null
 
 	var chunk_start := containing_index
 	while chunk_start > 0:
@@ -1111,18 +1111,18 @@ func _block_body_range(block: Dictionary, current: Dictionary) -> Dictionary:
 
 	var first_body_child: Dictionary = body_children[chunk_start]
 	var last_body_child: Dictionary = body_children[chunk_end]
-	var body_range := {
-		"from_line": first_body_child["from_line"],
-		"from_col": first_body_child["from_col"],
-		"to_line": last_body_child["to_line"],
-		"to_col": last_body_child["to_col"],
-	}
+	var body_range: SmartSelectionRange = SmartSelectionRange.create(
+		int(first_body_child["from_line"]),
+		int(first_body_child["from_col"]),
+		int(last_body_child["to_line"]),
+		int(last_body_child["to_col"])
+	)
 	if not _range_contains(body_range, current):
-		return {}
+		return null
 	return body_range
 
 
-func _body_child_index_for_range(body_children: Array, current: Dictionary) -> int:
+func _body_child_index_for_range(body_children: Array, current: SmartSelectionRange) -> int:
 	for index in body_children.size():
 		var child: Dictionary = body_children[index]
 		if _range_contains(_node_range(child), current):
@@ -1136,27 +1136,37 @@ func _body_child_index_for_range(body_children: Array, current: Dictionary) -> i
 	return -1
 
 
-func _conditional_chain_range_for_path(path: Array[Dictionary], index: int, lines: PackedStringArray, current: Dictionary) -> Dictionary:
+func _conditional_chain_range_for_path(
+	path: Array[Dictionary],
+	index: int,
+	lines: PackedStringArray,
+	current: SmartSelectionRange
+) -> SmartSelectionRange:
 	if index <= 0:
-		return {}
+		return null
 
 	var parent: Dictionary = path[index]
 	var selected_child: Dictionary = path[index - 1]
 	return _conditional_chain_range(parent, selected_child, lines, current)
 
 
-func _conditional_chain_range(parent: Dictionary, selected_child: Dictionary, lines: PackedStringArray, current: Dictionary) -> Dictionary:
+func _conditional_chain_range(
+	parent: Dictionary,
+	selected_child: Dictionary,
+	lines: PackedStringArray,
+	current: SmartSelectionRange
+) -> SmartSelectionRange:
 	if selected_child.get("kind", "") != KIND_BLOCK:
-		return {}
+		return null
 
 	var children: Array = parent.get("children", [])
 	var selected_index := _child_index_for_node(children, selected_child)
 	if selected_index == -1:
-		return {}
+		return null
 
 	var selected_keyword := _conditional_block_keyword(selected_child, lines)
 	if not ["if", "elif", "else"].has(selected_keyword):
-		return {}
+		return null
 
 	var chain_start := selected_index
 	while chain_start > 0:
@@ -1172,7 +1182,7 @@ func _conditional_chain_range(parent: Dictionary, selected_child: Dictionary, li
 
 	var first_chain_block: Dictionary = children[chain_start]
 	if _conditional_block_keyword(first_chain_block, lines) != "if":
-		return {}
+		return null
 
 	var chain_end := chain_start
 	while chain_end < children.size() - 1:
@@ -1189,20 +1199,20 @@ func _conditional_chain_range(parent: Dictionary, selected_child: Dictionary, li
 			break
 
 	if selected_index < chain_start or selected_index > chain_end:
-		return {}
+		return null
 	if chain_start == chain_end:
-		return {}
+		return null
 
 	var first_block: Dictionary = children[chain_start]
 	var last_block: Dictionary = children[chain_end]
-	var chain_range := {
-		"from_line": first_block["from_line"],
-		"from_col": first_block["from_col"],
-		"to_line": last_block["to_line"],
-		"to_col": last_block["to_col"],
-	}
+	var chain_range: SmartSelectionRange = SmartSelectionRange.create(
+		int(first_block["from_line"]),
+		int(first_block["from_col"]),
+		int(last_block["to_line"]),
+		int(last_block["to_col"])
+	)
 	if not _range_contains(chain_range, current):
-		return {}
+		return null
 	return chain_range
 
 
@@ -1294,33 +1304,33 @@ func _line_begins_with_keyword(line: String, from_col: int, keyword: String) -> 
 	return not _is_identifier_char(line[after_keyword_col])
 
 
-func _statement_expression_range(statement: Dictionary, current: Dictionary) -> Dictionary:
+func _statement_expression_range(statement: Dictionary, current: SmartSelectionRange) -> SmartSelectionRange:
 	var children: Array = statement.get("children", [])
 	if children.is_empty():
-		return {}
+		return null
 
 	var first_child: Dictionary = children[0]
 	if bool(statement.get("has_rhs_expression", false)):
 		var rhs_range := _node_range(first_child)
 		if _ranges_equal(rhs_range, _node_range(statement)):
-			return {}
+			return null
 		if not _range_contains(rhs_range, current):
-			return {}
+			return null
 		return rhs_range
 
 	if not bool(statement.get("explicit_continuation", false)):
-		return {}
+		return null
 
-	var expression_range := {
-		"from_line": first_child["from_line"],
-		"from_col": first_child["from_col"],
-		"to_line": statement["to_line"],
-		"to_col": statement["to_col"],
-	}
+	var expression_range: SmartSelectionRange = SmartSelectionRange.create(
+		int(first_child["from_line"]),
+		int(first_child["from_col"]),
+		int(statement["to_line"]),
+		int(statement["to_col"])
+	)
 	if _ranges_equal(expression_range, _node_range(statement)):
-		return {}
+		return null
 	if not _range_contains(expression_range, current):
-		return {}
+		return null
 	return expression_range
 
 
@@ -1499,19 +1509,19 @@ func _find_unclosed_collection_node(node: Dictionary, parent: Dictionary = {}) -
 	return result
 
 
-func _node_range(node: Dictionary) -> Dictionary:
+func _node_range(node: Dictionary) -> SmartSelectionRange:
 	return SmartSelectionRange.from_node(node)
 
 
-func _node_selection_range(node: Dictionary, current: Dictionary) -> Dictionary:
+func _node_selection_range(node: Dictionary, current: SmartSelectionRange) -> SmartSelectionRange:
 	var selection_range := _node_range(node)
 	if node.get("kind", "") == KIND_STATEMENT and _is_caret_in_statement_indent(node, current):
-		selection_range["from_col"] = current["from_col"]
+		selection_range.from_col = current.from_col
 	return selection_range
 
 
-func _append_range(ranges: Array[Dictionary], selection_range: Dictionary) -> void:
-	if selection_range.is_empty():
+func _append_range(ranges: Array[SmartSelectionRange], selection_range: SmartSelectionRange) -> void:
+	if selection_range == null:
 		return
 	for existing in ranges:
 		if _ranges_equal(existing, selection_range):
@@ -1519,47 +1529,67 @@ func _append_range(ranges: Array[Dictionary], selection_range: Dictionary) -> vo
 	ranges.append(selection_range)
 
 
-func _node_contains_range(node: Dictionary, selection_range: Dictionary) -> bool:
+func _node_contains_range(node: Dictionary, selection_range: SmartSelectionRange) -> bool:
 	if node.get("kind", "") == KIND_STATEMENT and _is_caret_in_statement_indent(node, selection_range):
 		return true
 	return _range_contains(_node_range(node), selection_range)
 
 
-func _is_caret_in_statement_indent(node: Dictionary, selection_range: Dictionary) -> bool:
-	if not _is_zero_width_range(selection_range):
+func _is_caret_in_statement_indent(node: Dictionary, selection_range: SmartSelectionRange) -> bool:
+	if not selection_range.is_zero_width():
 		return false
-	if int(selection_range["from_line"]) != int(node["from_line"]):
+	if selection_range.from_line != int(node["from_line"]):
 		return false
-	if int(selection_range["from_col"]) > int(node["from_col"]):
+	if selection_range.from_col > int(node["from_col"]):
 		return false
-	return int(selection_range["from_col"]) >= 0
+	return selection_range.from_col >= 0
 
 
-func _is_zero_width_range(selection_range: Dictionary) -> bool:
-	return SmartSelectionRange.is_zero_width(selection_range)
+func _range_contains(outer, inner) -> bool:
+	var outer_range: SmartSelectionRange = _as_selection_range(outer)
+	var inner_range: SmartSelectionRange = _as_selection_range(inner)
+	if outer_range == null or inner_range == null:
+		return false
+	return outer_range.contains_or_equal(inner_range)
 
 
-func _range_contains(outer: Dictionary, inner: Dictionary) -> bool:
-	return SmartSelectionRange.contains_or_equal(outer, inner)
-
-
-func _ranges_overlap(a: Dictionary, b: Dictionary) -> bool:
+func _ranges_overlap(a, b) -> bool:
+	var a_range: SmartSelectionRange = _as_selection_range(a)
+	var b_range: SmartSelectionRange = _as_selection_range(b)
+	if a_range == null or b_range == null:
+		return false
 	return (
-		_compare_positions(a["from_line"], a["from_col"], b["to_line"], b["to_col"]) < 0
-		and _compare_positions(b["from_line"], b["from_col"], a["to_line"], a["to_col"]) < 0
+		_compare_positions(a_range.from_line, a_range.from_col, b_range.to_line, b_range.to_col) < 0
+		and _compare_positions(b_range.from_line, b_range.from_col, a_range.to_line, a_range.to_col) < 0
 	)
 
 
-func _ranges_equal(a: Dictionary, b: Dictionary) -> bool:
-	return SmartSelectionRange.equal(a, b)
+func _ranges_equal(a, b) -> bool:
+	var a_range: SmartSelectionRange = _as_selection_range(a)
+	var b_range: SmartSelectionRange = _as_selection_range(b)
+	if a_range == null or b_range == null:
+		return false
+	return a_range.equals(b_range)
 
 
-func _range_size(selection_range: Dictionary) -> int:
-	return SmartSelectionRange.size(selection_range)
+func _range_size(selection_range) -> int:
+	var typed_range: SmartSelectionRange = _as_selection_range(selection_range)
+	if typed_range == null:
+		return 0
+	return typed_range.size()
 
 
 func _compare_positions(line_a: int, col_a: int, line_b: int, col_b: int) -> int:
 	return SmartSelectionRange.compare_positions(line_a, col_a, line_b, col_b)
+
+
+func _as_selection_range(value) -> SmartSelectionRange:
+	if value == null:
+		return null
+	if typeof(value) == TYPE_DICTIONARY:
+		return SmartSelectionRange.from_node(value)
+	var selection_range: SmartSelectionRange = value
+	return selection_range
 
 
 func _line_indent_chars(line: String) -> int:
