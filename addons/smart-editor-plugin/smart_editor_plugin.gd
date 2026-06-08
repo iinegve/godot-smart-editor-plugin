@@ -2,14 +2,14 @@
 extends EditorPlugin
 
 const SmartEditorSettings := preload("res://addons/smart-editor-plugin/settings/smart_editor_settings.gd")
-const ExpandShrinkSelectionController := preload("res://addons/smart-editor-plugin/controllers/expand_shrink_selection_controller.gd")
-const LocalVariableExtractionController := preload("res://addons/smart-editor-plugin/controllers/local_variable_extraction_controller.gd")
-const SymbolRenamingController := preload("res://addons/smart-editor-plugin/controllers/symbol_renaming_controller.gd")
-const LocalVariableInliningController := preload("res://addons/smart-editor-plugin/controllers/local_variable_inlining_controller.gd")
-const SmartSymbolUsageController := preload("res://addons/smart-editor-plugin/controllers/smart_symbol_usage_controller.gd")
-const LspSymbolUsageController := preload("res://addons/smart-editor-plugin/controllers/lsp_symbol_usage_controller.gd")
-const SmartFunctionBoundaryGuidesController := preload("res://addons/smart-editor-plugin/controllers/smart_function_boundary_guides_controller.gd")
-const CallHierarchyController := preload("res://addons/smart-editor-plugin/controllers/call_hierarchy_controller.gd")
+const ExpandShrinkSelectionController := preload("res://addons/smart-editor-plugin/features/expand_shrink_selection/expand_shrink_selection_controller.gd")
+const LocalVariableExtractionController := preload("res://addons/smart-editor-plugin/features/local_variable_extraction/local_variable_extraction_controller.gd")
+const SymbolRenamingController := preload("res://addons/smart-editor-plugin/features/symbol_renaming/symbol_renaming_controller.gd")
+const LocalVariableInliningController := preload("res://addons/smart-editor-plugin/features/local_variable_inlining/local_variable_inlining_controller.gd")
+const SmartSymbolUsageController := preload("res://addons/smart-editor-plugin/features/highlights/smart_symbol_usage_controller.gd")
+const LspSymbolUsageController := preload("res://addons/smart-editor-plugin/features/highlights/lsp_symbol_usage_controller.gd")
+const SmartFunctionBoundaryGuidesController := preload("res://addons/smart-editor-plugin/features/function_boundary_guides/smart_function_boundary_guides_controller.gd")
+const CallHierarchyController := preload("res://addons/smart-editor-plugin/features/call_hierarchy/call_hierarchy_controller.gd")
 const SmartEditorLspService := preload("res://addons/smart-editor-plugin/common/lsp/smart_editor_lsp_service.gd")
 
 var _lsp_service: Node
