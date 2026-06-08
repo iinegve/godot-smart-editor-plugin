@@ -100,7 +100,11 @@ static func line_col_to_offset(text: String, line: int, column: int) -> int:
 			return -1
 		offset = next_newline + 1
 
-	if offset + column > text.length():
+	var line_end := text.find("\n", offset)
+	if line_end == -1:
+		line_end = text.length()
+
+	if column > line_end - offset:
 		return -1
 
 	return offset + column

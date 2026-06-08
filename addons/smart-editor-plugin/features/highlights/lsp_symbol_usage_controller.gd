@@ -11,8 +11,6 @@ const STRIPE_WIDTH := 8.0
 const CARET_DEBOUNCE_SECONDS := 0.04
 const NAVIGATION_SETTLE_SECONDS := 0.08
 const TEXT_DEBOUNCE_SECONDS := 0.40
-const PROFILE_LOGS_ENABLED := true
-const PROFILE_LOG_PREFIX := "LSP Highlights Profile:"
 
 var _enabled_setting: StringName = &""
 var _highlight_enabled_setting: StringName = &""
@@ -310,84 +308,40 @@ func _refresh_semantic_references(request: Dictionary) -> void:
 	if not _request_matches_current(request):
 		return
 
-	var request_started_usec := Time.get_ticks_usec()
-	var code_text_started_usec := request_started_usec
 	var uri := str(request["uri"])
 	var code_text := _get_code_text(_code)
-	var code_text_elapsed_usec := Time.get_ticks_usec() - code_text_started_usec
-	_profile_log(
-		"begin symbol='%s' line=%d col=%d version=%d text_chars=%d text=%.3fms" % [
-			str(request["symbol"]),
-			int(request["line"]) + 1,
-			int(request["column"]) + 1,
-			int(request["code_version"]),
-			code_text.length(),
-			_usec_to_msec(code_text_elapsed_usec),
-		]
-	)
-
-	var sync_started_usec := Time.get_ticks_usec()
-	var sync_sent: bool = await _lsp_service.sync_document(uri, code_text)
-	_profile_log("sync_document sent=%s took %.3fms total=%.3fms" % [
-		str(sync_sent),
-		_usec_to_msec(Time.get_ticks_usec() - sync_started_usec),
-		_usec_to_msec(Time.get_ticks_usec() - request_started_usec),
-	])
-
-	var highlights_started_usec := Time.get_ticks_usec()
+	await _lsp_service.sync_document(uri, code_text)
 	var highlight_response = await _lsp_service.document_highlight(
 		uri,
 		int(request["line"]),
 		int(request["column"])
 	)
-	_profile_log("document_highlight took %.3fms total=%.3fms" % [
-		_usec_to_msec(Time.get_ticks_usec() - highlights_started_usec),
-		_usec_to_msec(Time.get_ticks_usec() - request_started_usec),
-	])
 	if not _request_matches_current(request):
-		_profile_log("stale response ignored total=%.3fms" % _usec_to_msec(Time.get_ticks_usec() - request_started_usec))
 		return
 	if not highlight_response.ok:
-		_profile_log("request failed total=%.3fms error=%s" % [
-			_usec_to_msec(Time.get_ticks_usec() - request_started_usec),
-			str(highlight_response.error),
-		])
 		_clear_references()
 		return
 
-	_apply_document_highlights(highlight_response.result, request, request_started_usec)
+	_apply_document_highlights(highlight_response.result, request)
 
 
-func _apply_document_highlights(document_highlights: Variant, request: Dictionary, request_started_usec: int = 0) -> void:
+func _apply_document_highlights(document_highlights: Variant, request: Dictionary) -> void:
 	if not _request_matches_current(request):
 		return
 
-	var apply_started_usec := Time.get_ticks_usec()
 	var current_reference := {
 		"line": int(request["line"]),
 		"column": int(request["column"]),
 		"end_line": int(request["end_line"]),
 		"end_column": int(request["end_column"]),
 	}
-	var convert_started_usec := Time.get_ticks_usec()
 	var filtered_references := _references_from_document_highlights(document_highlights)
-	var convert_elapsed_usec := Time.get_ticks_usec() - convert_started_usec
 	if filtered_references.is_empty():
-		_profile_log("convert empty convert=%.3fms total=%.3fms" % [
-			_usec_to_msec(convert_elapsed_usec),
-			_usec_to_msec(_elapsed_since(request_started_usec)),
-		])
 		_clear_references()
 		return
 
 	filtered_references = _references_including_current(filtered_references, current_reference)
 	_set_usage_references(filtered_references, _code.get_line_count(), current_reference)
-	_profile_log("apply refs=%d convert=%.3fms apply=%.3fms total=%.3fms" % [
-		filtered_references.size(),
-		_usec_to_msec(convert_elapsed_usec),
-		_usec_to_msec(Time.get_ticks_usec() - apply_started_usec),
-		_usec_to_msec(_elapsed_since(request_started_usec)),
-	])
 
 
 func _references_from_document_highlights(document_highlights: Variant) -> Array[Dictionary]:
@@ -695,21 +649,3 @@ func _get_editor_settings():
 		return null
 
 	return editor_interface.get_editor_settings()
-
-
-func _profile_log(message: String) -> void:
-	if not PROFILE_LOGS_ENABLED:
-		return
-
-	print("%s %s" % [PROFILE_LOG_PREFIX, message])
-
-
-func _elapsed_since(started_usec: int) -> int:
-	if started_usec <= 0:
-		return 0
-
-	return Time.get_ticks_usec() - started_usec
-
-
-func _usec_to_msec(usec: int) -> float:
-	return float(usec) / 1000.0

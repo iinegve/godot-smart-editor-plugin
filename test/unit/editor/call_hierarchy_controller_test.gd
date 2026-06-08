@@ -149,6 +149,39 @@ func test_constructor_call_columns_find_class_name_new_calls() -> void:
 	controller.free()
 
 
+func test_strip_line_comment_keeps_hash_inside_double_quoted_string() -> void:
+	var controller := CallHierarchyController.new()
+	var line := "var label := \"value # still string\""
+
+	assert_str(controller._strip_line_comment(line)).is_equal(line)
+
+	controller.free()
+
+
+func test_strip_line_comment_removes_real_comment_after_double_quoted_string() -> void:
+	var controller := CallHierarchyController.new()
+
+	assert_str(controller._strip_line_comment("var label := \"value # still string\" # real comment")).is_equal("var label := \"value # still string\" ")
+
+	controller.free()
+
+
+func test_strip_line_comment_removes_real_comment_after_single_quoted_string() -> void:
+	var controller := CallHierarchyController.new()
+
+	assert_str(controller._strip_line_comment("var label := 'value # still string' # real comment")).is_equal("var label := 'value # still string' ")
+
+	controller.free()
+
+
+func test_strip_line_comment_keeps_hash_inside_escaped_quoted_string() -> void:
+	var controller := CallHierarchyController.new()
+
+	assert_str(controller._strip_line_comment("var label := \"escaped \\\"#\\\"\" # real comment")).is_equal("var label := \"escaped \\\"#\\\"\" ")
+
+	controller.free()
+
+
 func test_constructor_callers_keep_distinct_call_sites_in_same_function() -> void:
 	var controller := CallHierarchyController.new()
 	var player_uri := SmartEditorFiles.path_to_file_uri("/project/player.gd")

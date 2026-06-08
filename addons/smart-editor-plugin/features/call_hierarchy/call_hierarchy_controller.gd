@@ -1223,10 +1223,28 @@ func _find_class_name_for_uri(uri: String) -> String:
 
 
 func _strip_line_comment(line: String) -> String:
-	var comment_start := line.find("#")
-	if comment_start == -1:
-		return line
-	return line.substr(0, comment_start)
+	var in_string := false
+	var string_quote := ""
+	var escaped := false
+
+	for index in line.length():
+		var character := line[index]
+		if in_string:
+			if escaped:
+				escaped = false
+			elif character == "\\":
+				escaped = true
+			elif character == string_quote:
+				in_string = false
+			continue
+
+		if character == "\"" or character == "'":
+			in_string = true
+			string_quote = character
+		elif character == "#":
+			return line.substr(0, index)
+
+	return line
 
 
 func _symbol_key(uri: String, line_index: int, symbol_name: String) -> String:
@@ -1265,6 +1283,9 @@ func _focus_script_location(line_index: int, column: int) -> void:
 
 func _get_current_code_edit() -> CodeEdit:
 	var script_editor := EditorInterface.get_script_editor()
+	if script_editor == null:
+		return null
+
 	var current_editor := script_editor.get_current_editor()
 	if current_editor == null:
 		return null
@@ -1277,11 +1298,19 @@ func _get_current_code_edit() -> CodeEdit:
 
 
 func _get_current_script_path() -> String:
-	var current_script: Script = EditorInterface.get_script_editor().get_current_script()
-	if current_script != null:
-		return current_script.resource_path
+	var script_editor := EditorInterface.get_script_editor()
+	if script_editor == null:
+		return ""
 
-	return ""
+	var current_script: Script = script_editor.get_current_script()
+	if current_script == null:
+		return ""
+
+	var script_path := current_script.resource_path
+	if script_path.is_empty() or script_path.get_extension().to_lower() != "gd":
+		return ""
+
+	return script_path
 
 
 func _get_code_text(code: CodeEdit) -> String:

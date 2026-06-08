@@ -65,6 +65,24 @@ func test_text_edits_are_applied_from_bottom_to_top() -> void:
 	]))
 
 
+func test_line_col_to_offset_rejects_columns_outside_target_line() -> void:
+	var text := "ab\ncde"
+
+	assert_int(SmartRenameWorkspaceEdit.line_col_to_offset(text, 0, 0)).is_equal(0)
+	assert_int(SmartRenameWorkspaceEdit.line_col_to_offset(text, 0, 2)).is_equal(2)
+	assert_int(SmartRenameWorkspaceEdit.line_col_to_offset(text, 1, 3)).is_equal(6)
+	assert_int(SmartRenameWorkspaceEdit.line_col_to_offset(text, 0, 3)).is_equal(-1)
+	assert_int(SmartRenameWorkspaceEdit.line_col_to_offset(text, 1, 4)).is_equal(-1)
+
+
+func test_text_edits_ignore_same_line_edit_with_columns_outside_target_line() -> void:
+	var text := "ab\ncde"
+
+	assert_str(SmartRenameWorkspaceEdit.apply_text_edits_to_text(text, _edits([
+		_edit(0, 3, 0, 3, "X"),
+	]))).is_equal(text)
+
+
 func test_text_edits_can_update_code_edit_buffer() -> void:
 	var code := CodeEdit.new()
 	code.text = "\n".join([
