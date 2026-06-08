@@ -235,7 +235,7 @@ func test_await_expression_expands_to_statement() -> void:
 	})
 
 
-func test_blank_line_separated_function_chunk() -> void:
+func test_blank_line_separated_function_body() -> void:
 	var code := "func example() -> void:\n\tvar setup := true\n\n\tprint(setup)\n\tprint(\"done\")\n\n\treturn"
 	_assert_expansions({
 		"code": code,
@@ -243,7 +243,45 @@ func test_blank_line_separated_function_chunk() -> void:
 		"expected": [
 			"setup",
 			"print(setup)",
-			"print(setup)\n\tprint(\"done\")",
+			"var setup := true\n\n\tprint(setup)\n\tprint(\"done\")\n\n\treturn",
+			code,
+		],
+	})
+
+
+func test_statement_before_blank_line_expands_to_function_body() -> void:
+	var code := "func blah() -> void:\n\tvar use_case_1 := 1\n\tvar use_case_2 := 2\n\n\tvar use_case_3 := 3"
+	_assert_expansions({
+		"code": code,
+		"caret": Vector2i(2, 20),
+		"expected": [
+			"2",
+			"var use_case_2 := 2",
+			"var use_case_1 := 1\n\tvar use_case_2 := 2\n\n\tvar use_case_3 := 3",
+			code,
+		],
+	})
+
+
+func test_blank_function_body_line_expands_to_function_body() -> void:
+	var code := "func blah() -> void:\n\tvar use_case_1 := 1\n\tvar use_case_2 := 2\n\n\tvar use_case_3 := 3"
+	_assert_expansions({
+		"code": code,
+		"caret": Vector2i(3, 0),
+		"expected": [
+			"var use_case_1 := 1\n\tvar use_case_2 := 2\n\n\tvar use_case_3 := 3",
+			code,
+		],
+	})
+
+
+func test_tab_only_function_body_line_expands_to_function_body() -> void:
+	var code := "func blah() -> void:\n\tvar use_case_1 := 1\n\tvar use_case_2 := 2\n\t\n\tvar use_case_3 := 3"
+	_assert_expansions({
+		"code": code,
+		"caret": Vector2i(3, 1),
+		"expected": [
+			"var use_case_1 := 1\n\tvar use_case_2 := 2\n\t\n\tvar use_case_3 := 3",
 			code,
 		],
 	})

@@ -13,6 +13,18 @@ func test_member_chain_expands_one_segment_at_a_time() -> void:
 	})
 
 
+func test_assignment_member_receiver_expands_before_statement() -> void:
+	_assert_expansions({
+		"code": "z_button.text = \"Snap To X Edge\"",
+		"caret": Vector2i(0, 2),
+		"expected": [
+			"z_button",
+			"z_button.text",
+			"z_button.text = \"Snap To X Edge\"",
+		],
+	})
+
+
 func test_subscript_key_expands_to_string_and_subscript() -> void:
 	_assert_expansions({
 		"code": "b[\"from_col\"]",

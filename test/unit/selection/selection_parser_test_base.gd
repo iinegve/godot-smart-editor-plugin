@@ -1,14 +1,13 @@
 extends GdUnitTestSuite
 
-const SelectionParser := preload("res://addons/smart-editor-plugin/features/expand_shrink_selection/gdscript_selection_parser.gd")
+const SelectionParser := preload("res://addons/smart-editor-plugin/features/expand_shrink_selection/gdscript_structural_selection_parser.gd")
 const SmartSelectionRange := preload("res://addons/smart-editor-plugin/common/smart_selection_range.gd")
 
 
 func _assert_expansions(test_case: Dictionary) -> void:
-	var parser := SelectionParser.new()
 	var caret: Vector2i = test_case["caret"]
 	var current: SmartSelectionRange = SmartSelectionRange.create(caret.x, caret.y, caret.x, caret.y)
-	var candidates := parser.build_candidates(test_case["code"], current)
+	var candidates: Array = SelectionParser.new().build_candidates(test_case["code"], current)
 	var actual: Array[String] = []
 	for candidate in candidates:
 		actual.append(_slice_range(test_case["code"], candidate))
@@ -17,28 +16,32 @@ func _assert_expansions(test_case: Dictionary) -> void:
 
 
 func _assert_first_plugin_expansion(test_case: Dictionary) -> void:
-	var parser := SelectionParser.new()
 	var caret: Vector2i = test_case["caret"]
 	var current: SmartSelectionRange = SmartSelectionRange.create(caret.x, caret.y, caret.x, caret.y)
-
-	for candidate in parser.build_candidates(test_case["code"], current):
+	var found := false
+	var candidates: Array = SelectionParser.new().build_candidates(test_case["code"], current)
+	for candidate in candidates:
 		if _range_strictly_contains(candidate, current):
 			assert_str(_slice_range(test_case["code"], candidate)).is_equal(test_case["expected"])
-			return
+			found = true
+			break
 
-	fail("No plugin-style expansion candidate found.")
+	if not found:
+		fail("No plugin-style expansion candidate found.")
 
 
 func _assert_next_plugin_expansion(test_case: Dictionary) -> void:
-	var parser := SelectionParser.new()
 	var current: SmartSelectionRange = _range_from_dictionary(test_case["current"])
-
-	for candidate in parser.build_candidates(test_case["code"], current):
+	var found := false
+	var candidates: Array = SelectionParser.new().build_candidates(test_case["code"], current)
+	for candidate in candidates:
 		if _range_strictly_contains(candidate, current):
 			assert_str(_slice_range(test_case["code"], candidate)).is_equal(test_case["expected"])
-			return
+			found = true
+			break
 
-	fail("No plugin-style expansion candidate found.")
+	if not found:
+		fail("No plugin-style expansion candidate found.")
 
 
 func _slice_range(text: String, selection_range: SmartSelectionRange) -> String:

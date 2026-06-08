@@ -1,7 +1,7 @@
 @tool
 extends RefCounted
 
-const GDScriptSelectionParser := preload("res://addons/smart-editor-plugin/features/expand_shrink_selection/gdscript_selection_parser.gd")
+const GDScriptSelectionParser := preload("res://addons/smart-editor-plugin/features/expand_shrink_selection/gdscript_structural_selection_parser.gd")
 const SmartSelectionHistory := preload("res://addons/smart-editor-plugin/features/expand_shrink_selection/smart_selection_history.gd")
 const SmartSelectionRange := preload("res://addons/smart-editor-plugin/common/smart_selection_range.gd")
 
