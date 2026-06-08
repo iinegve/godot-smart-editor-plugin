@@ -862,30 +862,42 @@ func _conditional_chain_range_for_path(path: Array, index: int, lines: Array, cu
 		var siblings: Array = parent.children
 		var block_index = siblings.find(block)
 		if block_index != -1:
-			var scan = block_index
-			while scan > 0:
-				var previous = siblings[scan - 1]
-				if not [KIND_BLOCK, KIND_FUNCTION].has(previous.kind):
-					scan -= 1
-					continue
-				var previous_keyword = _block_header_keyword(previous, lines)
-				if previous_keyword == "if" or previous_keyword == "elif":
-					chain_start = previous
-					scan -= 1
-					continue
-				break
-			scan = block_index + 1
-			while scan < siblings.size():
-				var next = siblings[scan]
-				if not [KIND_BLOCK, KIND_FUNCTION].has(next.kind):
-					scan += 1
-					continue
-				var next_keyword = _block_header_keyword(next, lines)
-				if next_keyword == "elif" or next_keyword == "else":
-					chain_end = next
-					scan += 1
-					continue
-				break
+			if keyword != "if":
+				var scan = block_index
+				while scan > 0:
+					var previous = siblings[scan - 1]
+					if _is_block_header_statement(previous, chain_start):
+						scan -= 1
+						continue
+					if not [KIND_BLOCK, KIND_FUNCTION].has(previous.kind):
+						break
+					var previous_keyword = _block_header_keyword(previous, lines)
+					if previous_keyword == "if" or previous_keyword == "elif":
+						chain_start = previous
+						scan -= 1
+						continue
+					break
+			if keyword != "else":
+				var scan = block_index + 1
+				while scan < siblings.size():
+					var next = siblings[scan]
+					if next.kind == KIND_STATEMENT and scan + 1 < siblings.size():
+						var next_block = siblings[scan + 1]
+						if _is_block_header_statement(next, next_block):
+							var next_block_keyword = _block_header_keyword(next_block, lines)
+							if next_block_keyword == "elif" or next_block_keyword == "else":
+								chain_end = next_block
+								scan += 2
+								continue
+						break
+					if not [KIND_BLOCK, KIND_FUNCTION].has(next.kind):
+						break
+					var next_keyword = _block_header_keyword(next, lines)
+					if next_keyword == "elif" or next_keyword == "else":
+						chain_end = next
+						scan += 1
+						continue
+					break
 	if chain_start == block and chain_end == block:
 		return null
 	var chain_range = SmartSelectionRange.create(
@@ -897,6 +909,21 @@ func _conditional_chain_range_for_path(path: Array, index: int, lines: Array, cu
 	if not chain_range.contains_or_equal(current):
 		return null
 	return chain_range
+
+
+func _is_block_header_statement(statement, block) -> bool:
+	if statement == null or block == null:
+		return false
+	if statement.kind != KIND_STATEMENT:
+		return false
+	if not [KIND_BLOCK, KIND_FUNCTION].has(block.kind):
+		return false
+	if block.children.is_empty():
+		return false
+	var header = block.children[0]
+	if header.kind != KIND_STATEMENT:
+		return false
+	return statement.selection_range.equals(header.selection_range)
 
 
 func _block_body_range(block, current: SmartSelectionRange) -> SmartSelectionRange:

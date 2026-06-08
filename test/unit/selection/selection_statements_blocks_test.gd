@@ -157,6 +157,20 @@ func test_if_block_expands_to_if_else_chain_before_function_body() -> void:
 	})
 
 
+func test_separate_if_block_expands_before_previous_unrelated_if_blocks() -> void:
+	var code := "func _connect_code() -> void:\n\tif _code == null or not is_instance_valid(_code):\n\t\treturn\n\n\tif not _code.text_changed.is_connected(_on_code_changed):\n\t\t_code.text_changed.connect(_on_code_changed)\n\tif not _code.resized.is_connected(_on_code_changed):\n\t\t_code.resized.connect(_on_code_changed)\n\n\t_v_scroll_bar = _code.get_v_scroll_bar()\n\tif _v_scroll_bar != null and not _v_scroll_bar.value_changed.is_connected(_on_scroll_changed):\n\t\t_v_scroll_bar.value_changed.connect(_on_scroll_changed)\n\tif _v_scroll_bar != null and not _v_scroll_bar.changed.is_connected(_on_scroll_bar_changed):\n\t\t_v_scroll_bar.changed.connect(_on_scroll_bar_changed)"
+	_assert_next_plugin_expansion({
+		"code": code,
+		"current": {
+			"from_line": 13,
+			"from_col": 2,
+			"to_line": 13,
+			"to_col": 55,
+		},
+		"expected": "if _v_scroll_bar != null and not _v_scroll_bar.changed.is_connected(_on_scroll_bar_changed):\n\t\t_v_scroll_bar.changed.connect(_on_scroll_bar_changed)",
+	})
+
+
 func test_if_else_chain_expands_to_function_body_before_function_header() -> void:
 	var code := "func attack(source: Unit, target: Unit):\n\tprint(source, \" attacking \", target)\n\tvar a = 4\n\tif a > 5:\n\t\tprint(17)\n\t\tvar blah2 = 17 * 2\n\t\tprint(blah2)\n\telse:\n\t\tprint(17)\n\t\tvar blah2 = 17 * 2\n\t\tprint(blah2)\n\tpass"
 	_assert_next_plugin_expansion({
