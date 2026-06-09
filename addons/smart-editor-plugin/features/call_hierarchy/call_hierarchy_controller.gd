@@ -396,8 +396,10 @@ func _focus_script_location(line_index: int, column: int) -> void:
 		return
 
 	code.grab_focus()
+	code.deselect()
 	code.set_caret_line(clampi(line_index, 0, code.get_line_count() - 1))
 	code.set_caret_column(maxi(column, 0))
+	code.deselect()
 	if code.has_method("center_viewport_to_caret"):
 		code.center_viewport_to_caret()
 
