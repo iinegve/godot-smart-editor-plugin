@@ -138,8 +138,10 @@ func _on_reference_clicked(line: int, symbol: String) -> void:
 	code.set_caret_line(line)
 	code.set_caret_column(col)
 
-	if _call_hierarchy_controller and _call_hierarchy_controller.has_method("_begin_call_hierarchy"):
-		_call_hierarchy_controller.call("_begin_call_hierarchy")
+	var has_method__begin_call_hierarchy = _call_hierarchy_controller and _call_hierarchy_controller.has_method("_begin_call_hierarchy")
+	if has_method__begin_call_hierarchy:
+		_call_hierarchy_controller._begin_call_hierarchy()
+	
 
 
 func _get_active_code_edit() -> CodeEdit:
