@@ -7,6 +7,7 @@ const LocalVariableExtractionController := preload("res://addons/smart-editor-pl
 const SymbolRenamingController := preload("res://addons/smart-editor-plugin/features/symbol_renaming/symbol_renaming_controller.gd")
 const LocalVariableInliningController := preload("res://addons/smart-editor-plugin/features/local_variable_inlining/local_variable_inlining_controller.gd")
 const SmartSymbolUsageController := preload("res://addons/smart-editor-plugin/features/highlights/smart_symbol_usage_controller.gd")
+const SmartReferenceCountController := preload("res://addons/smart-editor-plugin/features/reference_displaying/smart_reference_count_controller.gd")
 const LspSymbolUsageController := preload("res://addons/smart-editor-plugin/features/highlights/lsp_symbol_usage_controller.gd")
 const SmartFunctionBoundaryGuidesController := preload("res://addons/smart-editor-plugin/features/function_boundary_guides/smart_function_boundary_guides_controller.gd")
 const CallHierarchyController := preload("res://addons/smart-editor-plugin/features/call_hierarchy/call_hierarchy_controller.gd")
@@ -16,6 +17,7 @@ var _lsp_service: Node
 var _expand_shrink_selection_controller: Node
 var _local_variable_extraction_controller: Node
 var _symbol_renaming_controller: Node
+var _reference_count_controller: Node
 var _local_variable_inlining_controller: Node
 var _symbol_usage_controller: Node
 var _call_hierarchy_controller: Node
@@ -88,6 +90,18 @@ func _enter_tree() -> void:
 		SmartEditorSettings.SETTING_FUNCTION_BOUNDARY_INDENT_GUIDES_ENABLED,
 		SmartEditorSettings.SETTING_FUNCTION_BOUNDARY_GUIDE_COLOR
 	)
+	
+	SmartEditorSettings.init_reference_count_settings()
+	
+	_reference_count_controller = SmartReferenceCountController.new()
+	_reference_count_controller.name = "SmartReferenceCountController"
+	add_child(_reference_count_controller)
+	_reference_count_controller.configure(
+		_call_hierarchy_controller,
+		SmartEditorSettings.SETTING_REFERENCE_COUNT_ENABLED,
+		SmartEditorSettings.SETTING_REFERENCE_COUNT_COLOR,
+	)
+	
 
 
 func _exit_tree() -> void:
@@ -109,6 +123,9 @@ func _exit_tree() -> void:
 	if _local_variable_extraction_controller != null:
 		_local_variable_extraction_controller.queue_free()
 		_local_variable_extraction_controller = null
+	if _reference_count_controller != null:
+		_reference_count_controller.queue_free()
+		_reference_count_controller = null
 	if _expand_shrink_selection_controller != null:
 		_expand_shrink_selection_controller.queue_free()
 		_expand_shrink_selection_controller = null
