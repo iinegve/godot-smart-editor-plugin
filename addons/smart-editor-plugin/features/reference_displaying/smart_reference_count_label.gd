@@ -27,6 +27,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
 	clip_contents = true
 	set_anchors_preset(Control.PRESET_FULL_RECT)
+	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 
 
 func _notification(what: int) -> void:
@@ -37,6 +38,12 @@ func _notification(what: int) -> void:
 func _exit_tree() -> void:
 	_disconnect_scrollbars()
 
+
+func _has_point(point: Vector2) -> bool:
+	for hr in _hit_rects:
+		if (hr["rect"] as Rect2).has_point(point):
+			return true
+	return false
 
 
 func configure(enabled_setting: StringName, color_setting: StringName) -> void:
@@ -81,12 +88,10 @@ func _draw() -> void:
 	var hover_color := _get_hover_color(label_color)
 
 	var visible_range := _get_visible_line_range()
-	var base_offset := _get_calibrated_base_offset(visible_range.x)
 	var horizontal_base := _get_horizontal_base()
 
-	var any_hovered := _draw_entries(
+	_draw_entries(
 		visible_range, 
-		base_offset, 
 		horizontal_base, 
 		font, 
 		font_size, 
@@ -94,8 +99,6 @@ func _draw() -> void:
 		label_color, 
 		hover_color
 	)
-
-	_update_mouse_cursor(any_hovered)
 
 
 func _is_valid_drawing_state() -> bool:
@@ -127,19 +130,10 @@ func _get_visible_line_range() -> Vector2i:
 	return Vector2i(first, last)
 
 
-func _get_calibrated_base_offset(sample_line: int) -> float:
-	var line_height := float(_code.get_line_height())
-	var line_height_padding := 2
-	var base_offset := _code_top_content_margin()
-	var sample_rect := Rect2(_code.get_rect_at_line_column(sample_line, 0))
-	
-	if sample_rect.position.y >= 0.0 and sample_rect.size.y > 0.0:
-		var sample_overlay := _code_rect_to_overlay_rect(sample_rect)
-		var sample_scroll_pos := float(_code.get_scroll_pos_for_line(sample_line))
-		var v_scroll := float(_code.get_v_scroll())
-		base_offset = sample_overlay.position.y - (sample_scroll_pos - v_scroll) * line_height
-		
-	return base_offset + line_height_padding
+func _get_baseline(top_y: float, line_height: float, font_size: int, font: Font) -> float:
+	var code_ascent := font.get_ascent(font_size)
+	var code_descent := font.get_descent(font_size)
+	return top_y + (line_height + code_ascent - code_descent) / 2.0
 
 
 func _get_horizontal_base() -> float:
@@ -151,15 +145,13 @@ func _get_horizontal_base() -> float:
 
 func _draw_entries(
 	visible_range: Vector2i,
-	base_offset: float,
 	horizontal_base: float,
 	font: Font,
 	font_size: int,
 	label_size: int,
 	label_color: Color,
 	hover_color: Color
-) -> bool:
-	var any_hovered := false
+) -> void:
 	var mouse_pos := get_local_mouse_position()
 	var line_height := float(_code.get_line_height())
 	var line_count := _code.get_line_count()
@@ -175,20 +167,18 @@ func _draw_entries(
 			continue
 
 		var count := int(entry.get("count", 0))
-		var top_y := _get_vertical_position(line, base_offset, line_height)
+		var top_y := _get_vertical_position(line, line_height)
 		if top_y + line_height < 0.0 or top_y > size.y:
 			continue
 
 		var label_x := _get_horizontal_position(line_text, horizontal_base, font, font_size)
-		var baseline := _get_baseline(top_y, line_height, label_size, font)
+		var baseline := _get_baseline(top_y, line_height, font_size, font)
 
 		var label_text := _format_label(count)
 		var text_w := font.get_string_size(label_text, HORIZONTAL_ALIGNMENT_LEFT, -1, label_size).x
 		var hit_rect := Rect2(label_x, top_y, text_w, line_height)
 
 		var is_hovered := hit_rect.has_point(mouse_pos)
-		if is_hovered:
-			any_hovered = true
 
 		draw_string(
 			font,
@@ -202,13 +192,13 @@ func _draw_entries(
 
 		_hit_rects.append({"rect": hit_rect, "line": line, "symbol": symbol})
 
-	return any_hovered
 
-
-func _get_vertical_position(line: int, base_offset: float, line_height: float) -> float:
+func _get_vertical_position(line: int, line_height: float) -> float:
 	var scroll_pos := float(_code.get_scroll_pos_for_line(line))
 	var v_scroll := float(_code.get_v_scroll())
-	return base_offset + (scroll_pos - v_scroll) * line_height
+	var top_margin := _code_top_content_margin()
+	var micro_adjustment := 3
+	return top_margin + (scroll_pos - v_scroll) * line_height + micro_adjustment
 
 
 func _get_horizontal_position(line_text: String, horizontal_base: float, font: Font, font_size: int) -> float:
@@ -216,15 +206,6 @@ func _get_horizontal_position(line_text: String, horizontal_base: float, font: F
 	var local_x := horizontal_base + text_w
 	var dummy_overlay := _code_rect_to_overlay_rect(Rect2(local_x, 0, 1, 1))
 	return dummy_overlay.position.x + 6.0
-
-
-func _get_baseline(top_y: float, line_height: float, label_size: int, font: Font) -> float:
-	var label_ascent := font.get_ascent(label_size)
-	return top_y + (line_height - label_size) * 0.45 + label_ascent
-
-
-func _update_mouse_cursor(hovered: bool) -> void:
-	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if hovered else Control.CURSOR_ARROW
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -239,7 +220,6 @@ func _gui_input(event: InputEvent) -> void:
 				if (hr["rect"] as Rect2).has_point(mb.position):
 					label_clicked.emit(int(hr["line"]), str(hr["symbol"]))
 					return
-
 
 
 func _code_rect_to_overlay_rect(r: Rect2) -> Rect2:
@@ -272,7 +252,6 @@ func _label_color() -> Color:
 			if typeof(v) == TYPE_COLOR:
 				return v
 	return DEFAULT_LABEL_COLOR
-
 
 
 func _connect_scrollbars() -> void:
