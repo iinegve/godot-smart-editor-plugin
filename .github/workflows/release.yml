@@ -1,10 +1,13 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without leading v. Leave empty to use the next patch version."
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: write
@@ -25,10 +28,33 @@ jobs:
 
       - name: Resolve release version
         id: version
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
         run: |
           VERSION="$(python3 <<'PY'
+          import os
           import re
           import subprocess
+
+          requested_version = os.environ.get("VERSION_INPUT", "").strip()
+          if requested_version.startswith("v"):
+              requested_version = requested_version[1:]
+
+          if requested_version:
+              if not re.fullmatch(r'\d+\.\d+\.\d+', requested_version):
+                  raise SystemExit("Version must use X.Y.Z format, for example 0.3.0.")
+
+              tag_name = f"v{requested_version}"
+              tag_exists = subprocess.run(
+                  ["git", "rev-parse", "--quiet", "--verify", f"refs/tags/{tag_name}"],
+                  stdout=subprocess.DEVNULL,
+                  stderr=subprocess.DEVNULL,
+              ).returncode == 0
+              if tag_exists:
+                  raise SystemExit(f"Release tag {tag_name} already exists.")
+
+              print(requested_version)
+              raise SystemExit
 
           versions = []
           tags = subprocess.check_output(
