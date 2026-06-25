@@ -30,6 +30,34 @@ func test_enclosing_function_symbol_range_finds_nearest_function() -> void:
 	code.free()
 
 
+func test_enclosing_function_for_lines_ignores_top_level_comment_between_functions() -> void:
+	var lines := [
+		"func clear() -> void:",
+		"\t_values.clear()",
+		"",
+		"## Returns set values as a typed Array.",
+		"## `var units: Array[Unit] = set.values([] as Array[Unit])`",
+		"func values() -> Array:",
+		"\treturn _values",
+	]
+
+	var symbol_range = GDScriptTextIntrospection.enclosing_function_for_lines(lines, "file:///project/set.gd", 4)
+
+	assert_bool(symbol_range.is_empty()).is_true()
+
+
+func test_is_identifier_position_in_code_ignores_comments_and_strings() -> void:
+	var lines := [
+		"set.values()",
+		"## `var units = set.values()`",
+		"print(\"values\")",
+	]
+
+	assert_bool(GDScriptTextIntrospection.is_identifier_position_in_code(lines, 0, 4)).is_true()
+	assert_bool(GDScriptTextIntrospection.is_identifier_position_in_code(lines, 1, 21)).is_false()
+	assert_bool(GDScriptTextIntrospection.is_identifier_position_in_code(lines, 2, 7)).is_false()
+
+
 func test_constructor_call_columns_find_class_name_new_calls() -> void:
 	assert_array(GDScriptTextIntrospection.constructor_call_columns("var player := Player.new()", "Player")).is_equal([14])
 	assert_array(GDScriptTextIntrospection.constructor_call_columns("var player := NotPlayer.new()", "Player")).is_empty()

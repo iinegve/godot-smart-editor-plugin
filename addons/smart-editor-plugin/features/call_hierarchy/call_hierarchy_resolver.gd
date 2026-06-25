@@ -79,8 +79,12 @@ func references_to_call_sites(references: Array, request_method: CallHierarchyMe
 		if uri == request_method.uri and line == request_method.line and character == request_method.character:
 			continue
 
+		var lines := project_index.get_lines_for_uri(uri)
+		if not GDScriptTextIntrospection.is_identifier_position_in_code(lines, line, character):
+			continue
+
 		var caller := GDScriptTextIntrospection.enclosing_function_for_lines(
-			project_index.get_lines_for_uri(uri),
+			lines,
 			uri,
 			line
 		)

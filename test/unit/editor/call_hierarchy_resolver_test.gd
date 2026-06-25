@@ -32,6 +32,37 @@ func test_references_to_call_sites_keeps_distinct_call_sites_in_same_function() 
 	_assert_call_site(call_sites[2], "second", uri, 6, 5, 7, 1)
 
 
+func test_references_to_call_sites_ignores_comment_and_string_references() -> void:
+	var resolver := _resolver()
+	var uri := SmartEditorFiles.path_to_file_uri("/project/set.gd")
+	resolver.project_index.file_cache[uri] = [
+		"class_name Set",
+		"",
+		"func clear() -> void:",
+		"\t_values.clear()",
+		"",
+		"## Returns set values as a typed Array.",
+		"## `var units: Array[Unit] = set.values([] as Array[Unit])`",
+		"func values() -> Array:",
+		"\treturn _values",
+		"",
+		"func caller() -> void:",
+		"\tprint(\"values\")",
+		"\tvalues()",
+	]
+
+	var call_sites := resolver.references_to_call_sites([
+		_lsp_reference(uri, 5, 15),
+		_lsp_reference(uri, 6, 33),
+		_lsp_reference(uri, 7, 5),
+		_lsp_reference(uri, 11, 9),
+		_lsp_reference(uri, 12, 1),
+	], CallHierarchyMethod.create("values", uri, 7, 5))
+
+	assert_int(call_sites.size()).is_equal(1)
+	_assert_call_site(call_sites[0], "caller", uri, 10, 5, 12, 1)
+
+
 func test_engine_callback_methods_are_not_loaded_from_lsp() -> void:
 	var resolver := _resolver()
 

@@ -51,11 +51,18 @@ static func enclosing_function_symbol_range(code: CodeEdit, line_index: int) -> 
 
 
 static func enclosing_function_for_lines(lines: Array, uri: String, line_index: int) -> CallHierarchyMethod:
-	for index in range(mini(line_index, lines.size() - 1), -1, -1):
+	if lines.is_empty() or line_index < 0:
+		return CallHierarchyMethod.new()
+
+	var target_line := mini(line_index, lines.size() - 1)
+	for index in range(target_line, -1, -1):
 		var line := str(lines[index])
 		var stripped := line.strip_edges()
 		if not stripped.begins_with("func "):
 			continue
+
+		if not _line_belongs_to_function(lines, index, target_line):
+			return CallHierarchyMethod.new()
 
 		var name_start := line.find("func ") + 5
 		name_start = skip_spaces(line, name_start)
@@ -68,6 +75,43 @@ static func enclosing_function_for_lines(lines: Array, uri: String, line_index: 
 		return CallHierarchyMethod.create(line.substr(name_start, name_end - name_start), uri, index, name_start)
 
 	return CallHierarchyMethod.new()
+
+
+static func is_identifier_position_in_code(lines: Array, line_index: int, column: int) -> bool:
+	if line_index < 0 or line_index >= lines.size():
+		return false
+
+	var line := str(lines[line_index])
+	if column < 0 or column >= line.length():
+		return false
+
+	var index := 0
+	while index < line.length():
+		var character := line[index]
+		if character == "#":
+			return false
+		if character == "\"" or character == "'":
+			var string_end := _skip_quoted_string(line, index, character)
+			if column >= index and column < string_end:
+				return false
+
+			index = string_end
+			continue
+		if is_identifier_start_char(character):
+			var identifier_start := index
+			index += 1
+			while index < line.length() and is_identifier_char(line[index]):
+				index += 1
+
+			if column >= identifier_start and column < index:
+				return true
+			if column < identifier_start:
+				return false
+			continue
+
+		index += 1
+
+	return false
 
 
 static func method_symbol_range_for_lines(lines: Array, uri: String, method_name: String) -> CallHierarchyMethod:
@@ -306,6 +350,48 @@ static func skip_back_spaces(line: String, col: int) -> int:
 	while col >= 0 and (line[col] == " " or line[col] == "\t"):
 		col -= 1
 	return col
+
+
+static func _leading_whitespace_count(line: String) -> int:
+	var count := 0
+	while count < line.length() and (line[count] == " " or line[count] == "\t"):
+		count += 1
+	return count
+
+
+static func _line_belongs_to_function(lines: Array, function_line: int, line_index: int) -> bool:
+	if line_index == function_line:
+		return true
+
+	var function_indent := _leading_whitespace_count(str(lines[function_line]))
+	for index in range(function_line + 1, line_index + 1):
+		var line := str(lines[index])
+		if line.strip_edges().is_empty():
+			continue
+
+		var line_indent := _leading_whitespace_count(line)
+		if strip_line_comment(line).strip_edges().is_empty():
+			if line_indent <= function_indent:
+				return false
+			continue
+
+		if line_indent <= function_indent:
+			return false
+
+	return true
+
+
+static func _skip_quoted_string(line: String, index: int, quote: String) -> int:
+	index += 1
+	while index < line.length():
+		if line[index] == "\\":
+			index += 2
+			continue
+		if line[index] == quote:
+			return index + 1
+		index += 1
+
+	return line.length()
 
 
 static func is_valid_identifier(value: String) -> bool:
