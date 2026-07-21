@@ -1,5 +1,7 @@
 extends "res://test/unit/selection/selection_parser_test_base.gd"
 
+const ExpandSelectionUseCase := preload("res://addons/smart-editor-plugin/features/expand_shrink_selection/use_case.gd")
+
 
 func test_local_typed_variable_name_expands_to_typed_declaration_before_line() -> void:
 	_assert_expansions({
@@ -198,6 +200,67 @@ func test_function_body_expands_before_signature_block() -> void:
 			"queue_delete(_cli_runner)\n\tif OS.is_stdout_verbose():\n\t\tprints(\"Finallize ..\")",
 			code,
 		],
+	})
+
+
+func test_function_expands_to_attached_comment_block_before_file() -> void:
+	var code := "\n".join([
+		"const BEFORE := 1",
+		"",
+		"# Updates the current visibility state.",
+		"## Keeps observers synchronized.",
+		"func update_visibility() -> void:",
+		"\tpass",
+		"",
+		"const AFTER := 2",
+	])
+	var lines := code.split("\n", true)
+	_assert_next_plugin_expansion({
+		"code": code,
+		"current": {
+			"from_line": 4,
+			"from_col": 0,
+			"to_line": 5,
+			"to_col": String(lines[5]).length(),
+		},
+		"expected": "# Updates the current visibility state.\n## Keeps observers synchronized.\nfunc update_visibility() -> void:\n\tpass",
+	})
+
+
+func test_blank_line_prevents_function_expansion_to_previous_comment() -> void:
+	var code := "\n".join([
+		"# This is a general note, not a function comment.",
+		"",
+		"func update_visibility() -> void:",
+		"\tpass",
+		"",
+		"const AFTER := 2",
+	])
+	var lines := code.split("\n", true)
+	var current: SmartSelectionRange = SmartSelectionRange.create(2, 0, 3, String(lines[3]).length())
+	var next_range: SmartSelectionRange = ExpandSelectionUseCase.new().next_expand_range(code, current)
+
+	assert_str(_slice_range(code, next_range)).is_equal(code)
+
+
+func test_nested_function_expands_to_same_indent_attached_comment() -> void:
+	var code := "\n".join([
+		"class Inner:",
+		"\t# Updates the inner value.",
+		"\tfunc update() -> void:",
+		"\t\tpass",
+		"\tvar done := true",
+	])
+	var lines := code.split("\n", true)
+	_assert_next_plugin_expansion({
+		"code": code,
+		"current": {
+			"from_line": 2,
+			"from_col": 1,
+			"to_line": 3,
+			"to_col": String(lines[3]).length(),
+		},
+		"expected": "# Updates the inner value.\n\tfunc update() -> void:\n\t\tpass",
 	})
 
 

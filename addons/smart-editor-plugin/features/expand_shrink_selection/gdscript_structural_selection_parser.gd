@@ -520,6 +520,8 @@ func _ranges_for_node(path: Array, index: int, current: SmartSelectionRange, lin
 		_append_range(ranges, _conditional_chain_range_for_path(path, index, lines, current))
 		_append_range(ranges, _block_body_range(node, current))
 	_append_range(ranges, _node_selection_range(node, current))
+	if node.kind == KIND_FUNCTION:
+		_append_range(ranges, _function_with_leading_comment_range(node, lines))
 	if index == 0:
 		_append_range(ranges, _member_suffix_range_for_path(path, current))
 	return ranges
@@ -939,6 +941,30 @@ func _block_body_range(block, current: SmartSelectionRange) -> SmartSelectionRan
 	if not body.contains_or_equal(current):
 		return null
 	return body
+
+
+func _function_with_leading_comment_range(function, lines: Array) -> SmartSelectionRange:
+	var function_range: SmartSelectionRange = function.selection_range
+	var function_indent := function_range.from_col
+	var start_line := function_range.from_line
+	while start_line > 0:
+		var previous_line := String(lines[start_line - 1])
+		var comment_start := _line_indent_chars(previous_line)
+		if comment_start != function_indent:
+			break
+		if comment_start >= previous_line.length() or previous_line[comment_start] != "#":
+			break
+		start_line -= 1
+
+	if start_line == function_range.from_line:
+		return null
+
+	return SmartSelectionRange.create(
+		start_line,
+		function_indent,
+		function_range.to_line,
+		function_range.to_col
+	)
 
 
 func _block_header_keyword(block, lines: Array) -> String:
