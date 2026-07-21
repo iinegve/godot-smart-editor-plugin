@@ -99,11 +99,7 @@ func _build_tree(text: String):
 
 		var is_explicit_continuation = explicit_continuation_statement != null
 		if not is_explicit_continuation:
-			while container_stack.size() > 1:
-				var top = container_stack.back()
-				if code_start > int(top.data.get("indent", 0)):
-					break
-				container_stack.pop_back()
+			_pop_dedented_containers(container_stack, code_start)
 
 		var multiline_string_start = _multiline_string_start_col(line, code_start, code_end)
 		if multiline_string_start != -1:
@@ -1121,8 +1117,13 @@ func _line_closes_brace_block(line: String, line_index: int, code_start: int, co
 
 
 func _append_full_line_comment(line: String, line_index: int, code_start: int, comment_start: int, container_stack: Array, collection_stack: Array, active_comment):
+	_pop_dedented_containers(container_stack, code_start)
 	var comment_end = _line_comment_end(line, comment_start)
-	if active_comment != null and active_comment.selection_range.to_line == line_index - 1:
+	if (
+		active_comment != null
+		and active_comment.selection_range.to_line == line_index - 1
+		and active_comment.selection_range.from_col == comment_start
+	):
 		active_comment.selection_range.to_line = line_index
 		active_comment.selection_range.to_col = comment_end
 		return active_comment
@@ -1132,6 +1133,14 @@ func _append_full_line_comment(line: String, line_index: int, code_start: int, c
 	var comment = _make_node(KIND_COMMENT, line_index, comment_start, line_index, comment_end)
 	_add_child(parent, comment)
 	return comment
+
+
+func _pop_dedented_containers(container_stack: Array, code_start: int) -> void:
+	while container_stack.size() > 1:
+		var top = container_stack.back()
+		if code_start > int(top.data.get("indent", 0)):
+			break
+		container_stack.pop_back()
 
 
 func _continue_multiline_string_statement(line: String, line_index: int, code_start: int, code_end: int, statement, string_literal, collection_stack: Array) -> bool:

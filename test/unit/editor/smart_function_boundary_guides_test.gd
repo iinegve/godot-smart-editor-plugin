@@ -3,6 +3,47 @@ extends GdUnitTestSuite
 const FunctionBoundaryGuides := preload("res://addons/smart-editor-plugin/features/function_boundary_guides/smart_function_boundary_guides.gd")
 
 
+func test_attached_comment_block_is_part_of_function_start() -> void:
+	var code := "\n".join([
+		"const VALUE := 1",
+		"",
+		"# Updates the current visibility state.",
+		"## Keeps observers synchronized.",
+		"func update_visibility() -> void:",
+		"\tpass",
+	])
+
+	assert_array(FunctionBoundaryGuides.function_boundaries(code)).is_equal([
+		_boundary(4, 5, 0, 2),
+	])
+
+
+func test_blank_line_separates_comment_from_function_start() -> void:
+	var code := "\n".join([
+		"# This is a general note, not a function comment.",
+		"",
+		"func update_visibility() -> void:",
+		"\tpass",
+	])
+
+	assert_array(FunctionBoundaryGuides.function_boundaries(code)).is_equal([
+		_boundary(2, 3, 0),
+	])
+
+
+func test_indented_function_includes_same_indent_attached_comment() -> void:
+	var code := "\n".join([
+		"class Inner:",
+		"\t# Updates the inner value.",
+		"\tfunc update() -> void:",
+		"\t\tpass",
+	])
+
+	assert_array(FunctionBoundaryGuides.function_boundaries(code)).is_equal([
+		_boundary(2, 3, 1, 1),
+	])
+
+
 func test_function_boundaries_ignore_blank_lines_inside_functions() -> void:
 	var code := "\n".join([
 		"func first() -> void:",
@@ -169,8 +210,11 @@ func test_indent_guide_x_uses_content_start_column_width_and_horizontal_scroll()
 	assert_float(FunctionBoundaryGuides.indent_guide_x(48.0, 8, 7.5, 10.0)).is_equal(98.0)
 
 
-func _boundary(header_line: int, end_line: int, indent: int) -> Dictionary:
+func _boundary(header_line: int, end_line: int, indent: int, start_line: int = -1) -> Dictionary:
+	if start_line == -1:
+		start_line = header_line
 	return {
+		"start_line": start_line,
 		"header_line": header_line,
 		"end_line": end_line,
 		"indent": indent,

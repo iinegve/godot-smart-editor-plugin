@@ -214,6 +214,70 @@ func test_comment_inside_function_expands_to_comment_before_function_body() -> v
 	})
 
 
+func test_dedented_comment_after_for_loop_is_excluded_from_loop_ranges() -> void:
+	var code := "for squad_member in _filter_units(Global.Team.SQUAD):\n\tvar visible_enemies = _visibility_system.find_enemies_for(squad_member)\n\tsquad_member.update_visible_enemies(visible_enemies)\n\tall_visible_enemies.append_array(visible_enemies)\n\t\n# All guards that are not visible to all squad members, become hidden"
+	var lines := code.split("\n", true)
+	var body := "var visible_enemies = _visibility_system.find_enemies_for(squad_member)\n\tsquad_member.update_visible_enemies(visible_enemies)\n\tall_visible_enemies.append_array(visible_enemies)"
+	_assert_next_plugin_expansion({
+		"code": code,
+		"current": {
+			"from_line": 1,
+			"from_col": 1,
+			"to_line": 1,
+			"to_col": String(lines[1]).length(),
+		},
+		"expected": body,
+	})
+	_assert_next_plugin_expansion({
+		"code": code,
+		"current": {
+			"from_line": 1,
+			"from_col": 1,
+			"to_line": 3,
+			"to_col": String(lines[3]).length(),
+		},
+		"expected": "for squad_member in _filter_units(Global.Team.SQUAD):\n\t%s" % body,
+	})
+
+
+func test_dedented_comment_after_function_is_excluded_from_function_ranges() -> void:
+	var code := "func update_visibility() -> void:\n\tvar visible_enemies := find_enemies()\n\tapply_visibility(visible_enemies)\n\t\n# Update UI after visibility changes"
+	var lines := code.split("\n", true)
+	var body := "var visible_enemies := find_enemies()\n\tapply_visibility(visible_enemies)"
+	_assert_next_plugin_expansion({
+		"code": code,
+		"current": {
+			"from_line": 1,
+			"from_col": 1,
+			"to_line": 1,
+			"to_col": String(lines[1]).length(),
+		},
+		"expected": body,
+	})
+	_assert_next_plugin_expansion({
+		"code": code,
+		"current": {
+			"from_line": 1,
+			"from_col": 1,
+			"to_line": 2,
+			"to_col": String(lines[2]).length(),
+		},
+		"expected": "func update_visibility() -> void:\n\t%s" % body,
+	})
+
+
+func test_adjacent_comments_across_dedent_are_separate_comment_blocks() -> void:
+	var code := "if is_ready:\n\t# This comment belongs to the block\n# This comment is outside the block"
+	_assert_expansions({
+		"code": code,
+		"caret": Vector2i(1, 5),
+		"expected": [
+			"# This comment belongs to the block",
+			"if is_ready:\n\t# This comment belongs to the block",
+		],
+	})
+
+
 func test_top_level_comment_block_expands_before_file() -> void:
 	var code := "# First note\n# Second note\n\nclass_name Notes"
 	_assert_expansions({

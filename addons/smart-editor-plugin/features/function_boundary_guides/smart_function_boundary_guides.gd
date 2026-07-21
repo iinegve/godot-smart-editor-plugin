@@ -83,6 +83,7 @@ static func function_boundaries(text: String) -> Array[Dictionary]:
 			continue
 
 		var function_indent := _indent_columns(line)
+		var start_line := _function_start_line(lines, line_index, function_indent)
 		var signature_end_line := _function_signature_end_line(lines, line_index)
 		var end_line := signature_end_line
 		var search_line := signature_end_line + 1
@@ -99,12 +100,28 @@ static func function_boundaries(text: String) -> Array[Dictionary]:
 			search_line += 1
 
 		result.append({
+			"start_line": start_line,
 			"header_line": line_index,
 			"end_line": end_line,
 			"indent": function_indent,
 		})
 
 	return result
+
+
+static func _function_start_line(lines: PackedStringArray, header_line: int, function_indent: int) -> int:
+	var start_line := header_line
+	while start_line > 0:
+		var previous_line := lines[start_line - 1]
+		if previous_line.strip_edges().is_empty():
+			break
+		if _indent_columns(previous_line) != function_indent:
+			break
+		if not previous_line.strip_edges(true, false).begins_with("#"):
+			break
+		start_line -= 1
+
+	return start_line
 
 
 static func _function_signature_end_line(lines: PackedStringArray, header_line: int) -> int:
@@ -169,11 +186,12 @@ func _draw() -> void:
 
 	for boundary in _boundaries:
 		var header_line := int(boundary.get("header_line", -1))
-		var guide_line := _function_separator_guide_line(header_line)
+		var start_line := int(boundary.get("start_line", header_line))
+		var guide_line := _function_separator_guide_line(start_line)
 		if guide_line < visible_lines.x or guide_line > visible_lines.y:
 			continue
 
-		var y := _function_separator_guide_y(header_line)
+		var y := _function_separator_guide_y(start_line)
 		if y < 0.0 or y > size.y:
 			continue
 
@@ -223,14 +241,14 @@ func _rebuild_boundaries() -> void:
 
 static func function_separator_guide_y(
 	previous_line_rect: Rect2,
-	header_line_rect: Rect2,
+	start_line_rect: Rect2,
 	has_blank_gap: bool
 ) -> float:
 	if has_blank_gap:
-		return header_line_rect.position.y - header_line_rect.size.y * 0.5
+		return start_line_rect.position.y - start_line_rect.size.y * 0.5
 
 	var previous_bottom := previous_line_rect.position.y + previous_line_rect.size.y
-	return (previous_bottom + header_line_rect.position.y) * 0.5
+	return (previous_bottom + start_line_rect.position.y) * 0.5
 
 
 static func guide_start_x_for_gutter(total_gutter_width: float, left_margin: float) -> float:
@@ -280,38 +298,38 @@ static func indent_guide_x(start_x: float, visual_column: int, column_width: flo
 	return start_x + float(visual_column) * column_width - horizontal_scroll
 
 
-func _function_separator_guide_line(header_line: int) -> int:
-	var previous_line := _previous_non_empty_line_before(header_line)
+func _function_separator_guide_line(start_line: int) -> int:
+	var previous_line := _previous_non_empty_line_before(start_line)
 	if previous_line == -1:
 		return -1
-	if previous_line + 1 < header_line:
-		return header_line - 1
+	if previous_line + 1 < start_line:
+		return start_line - 1
 
-	return header_line
+	return start_line
 
 
-func _function_separator_guide_y(header_line: int) -> float:
+func _function_separator_guide_y(start_line: int) -> float:
 	if _code == null or not is_instance_valid(_code):
 		return -1.0
-	if header_line < 0 or header_line >= _code.get_line_count():
+	if start_line < 0 or start_line >= _code.get_line_count():
 		return -1.0
 
-	var previous_line := _previous_non_empty_line_before(header_line)
+	var previous_line := _previous_non_empty_line_before(start_line)
 	if previous_line == -1:
 		return -1.0
 
 	var previous_line_rect := _line_overlay_rect(previous_line)
-	var header_line_rect := _line_overlay_rect(header_line)
-	if header_line_rect.position.y < 0.0:
+	var start_line_rect := _line_overlay_rect(start_line)
+	if start_line_rect.position.y < 0.0:
 		return -1.0
 
-	var has_blank_gap := previous_line + 1 < header_line
+	var has_blank_gap := previous_line + 1 < start_line
 	if not has_blank_gap and previous_line_rect.position.y < 0.0:
-		return header_line_rect.position.y
+		return start_line_rect.position.y
 
 	return function_separator_guide_y(
 		previous_line_rect,
-		header_line_rect,
+		start_line_rect,
 		has_blank_gap
 	)
 
