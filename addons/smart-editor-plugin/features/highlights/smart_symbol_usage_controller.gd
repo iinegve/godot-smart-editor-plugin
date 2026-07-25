@@ -184,6 +184,7 @@ func _sync_stripe_overlay() -> void:
 	_stripe.name = "SmartSymbolUsageStripe"
 	_stripe.usage_clicked.connect(_on_stripe_usage_clicked)
 	_code.add_child(_stripe)
+	_stripe.attach_to_code(_code)
 	_overlays_dirty = true
 
 
