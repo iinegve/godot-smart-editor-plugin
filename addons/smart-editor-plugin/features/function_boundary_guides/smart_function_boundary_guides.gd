@@ -298,6 +298,10 @@ static func indent_guide_x(start_x: float, visual_column: int, column_width: flo
 	return start_x + float(visual_column) * column_width - horizontal_scroll
 
 
+static func indent_column_width(space_character_width: float, space_spacing: float) -> float:
+	return space_character_width + space_spacing
+
+
 func _function_separator_guide_line(start_line: int) -> int:
 	var previous_line := _previous_non_empty_line_before(start_line)
 	if previous_line == -1:
@@ -390,7 +394,9 @@ func _indent_column_width() -> float:
 		return 0.0
 
 	var font_size := _code.get_theme_font_size("font_size")
-	return font.get_string_size(" ", HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size).x
+	var space_character_width := font.get_char_size(" ".unicode_at(0), font_size).x
+	var space_spacing := float(font.get_spacing(TextServer.SPACING_SPACE))
+	return indent_column_width(space_character_width, space_spacing)
 
 
 func _line_overlay_rect(line: int) -> Rect2:

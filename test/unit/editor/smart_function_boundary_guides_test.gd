@@ -210,6 +210,10 @@ func test_indent_guide_x_uses_content_start_column_width_and_horizontal_scroll()
 	assert_float(FunctionBoundaryGuides.indent_guide_x(48.0, 8, 7.5, 10.0)).is_equal(98.0)
 
 
+func test_indent_column_width_includes_font_space_spacing() -> void:
+	assert_float(FunctionBoundaryGuides.indent_column_width(8.5, 1.0)).is_equal(9.5)
+
+
 func _boundary(header_line: int, end_line: int, indent: int, start_line: int = -1) -> Dictionary:
 	if start_line == -1:
 		start_line = header_line
