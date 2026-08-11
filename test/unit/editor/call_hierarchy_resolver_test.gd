@@ -63,6 +63,52 @@ func test_references_to_call_sites_ignores_comment_and_string_references() -> vo
 	_assert_call_site(call_sites[0], "caller", uri, 10, 5, 12, 1)
 
 
+func test_references_to_call_sites_ignores_method_declaration_when_request_starts_at_usage() -> void:
+	var resolver := _resolver()
+	var board_uri := SmartEditorFiles.path_to_file_uri("/project/board_state.gd")
+	var path_uri := SmartEditorFiles.path_to_file_uri("/project/path_smoother.gd")
+	resolver.project_index.file_cache[board_uri] = [
+		"class_name BoardState",
+		"",
+		"func cells_connected(a, b) -> bool:",
+		"\treturn true",
+	]
+	resolver.project_index.file_cache[path_uri] = [
+		"class_name PathSmoother",
+		"",
+		"func check(board_state: BoardState) -> bool:",
+		"\treturn board_state.cells_connected(a, b)",
+	]
+
+	var call_sites := resolver.references_to_call_sites([
+		_lsp_reference(board_uri, 2, 5),
+		_lsp_reference(path_uri, 3, 20),
+	], CallHierarchyMethod.create("cells_connected", path_uri, 3, 20))
+
+	assert_array(call_sites).is_empty()
+
+
+func test_references_to_call_sites_keeps_static_caller_with_multiline_signature() -> void:
+	var resolver := _resolver()
+	var board_uri := SmartEditorFiles.path_to_file_uri("/project/board_state.gd")
+	var path_uri := SmartEditorFiles.path_to_file_uri("/project/path_smoother.gd")
+	resolver.project_index.file_cache[path_uri] = [
+		"class_name PathSmoother",
+		"",
+		"static func unit_can_go_there(",
+		"\tunit: Unit, start: Vector3i, end: Vector3i, grid_geometry: GridGeometry, board_state: BoardState",
+		") -> bool:",
+		"\treturn board_state.cells_connected(a, b)",
+	]
+
+	var call_sites := resolver.references_to_call_sites([
+		_lsp_reference(path_uri, 5, 20),
+	], CallHierarchyMethod.create("cells_connected", board_uri, 2, 5))
+
+	assert_int(call_sites.size()).is_equal(1)
+	_assert_call_site(call_sites[0], "unit_can_go_there", path_uri, 2, 12, 5, 20)
+
+
 func test_engine_callback_methods_are_not_loaded_from_lsp() -> void:
 	var resolver := _resolver()
 
@@ -97,6 +143,36 @@ func test_call_hierarchy_root_uses_typed_member_receiver_definition() -> void:
 
 	assert_str(root_symbol.name).is_equal("released")
 	assert_str(root_symbol.uri).is_equal(unit_uri)
+	assert_int(root_symbol.line).is_equal(2)
+	assert_int(root_symbol.character).is_equal(5)
+
+
+func test_call_hierarchy_root_uses_parameter_type_from_static_multiline_signature() -> void:
+	var resolver := _resolver()
+	var path_uri := SmartEditorFiles.path_to_file_uri("/project/path_smoother.gd")
+	var board_uri := SmartEditorFiles.path_to_file_uri("/project/board_state.gd")
+	resolver.project_index.file_cache[path_uri] = [
+		"class_name PathSmoother",
+		"",
+		"static func unit_can_go_there(",
+		"\tunit: Unit, start: Vector3i, end: Vector3i, grid_geometry: GridGeometry, board_state: BoardState",
+		") -> bool:",
+		"\treturn board_state.cells_connected(a, b)",
+	]
+	resolver.project_index.file_cache[board_uri] = [
+		"class_name BoardState",
+		"",
+		"func cells_connected(a, b) -> bool:",
+		"\treturn true",
+	]
+
+	var root_symbol := resolver.root_method(
+		path_uri,
+		CallHierarchyMethod.create("cells_connected", "", 5, 20)
+	)
+
+	assert_str(root_symbol.name).is_equal("cells_connected")
+	assert_str(root_symbol.uri).is_equal(board_uri)
 	assert_int(root_symbol.line).is_equal(2)
 	assert_int(root_symbol.character).is_equal(5)
 

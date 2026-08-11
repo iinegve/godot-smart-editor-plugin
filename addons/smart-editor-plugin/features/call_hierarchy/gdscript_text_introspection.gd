@@ -57,15 +57,13 @@ static func enclosing_function_for_lines(lines: Array, uri: String, line_index: 
 	var target_line := mini(line_index, lines.size() - 1)
 	for index in range(target_line, -1, -1):
 		var line := str(lines[index])
-		var stripped := line.strip_edges()
-		if not stripped.begins_with("func "):
+		var name_start := _function_name_start(line)
+		if name_start == -1:
 			continue
 
 		if not _line_belongs_to_function(lines, index, target_line):
 			return CallHierarchyMethod.new()
 
-		var name_start := line.find("func ") + 5
-		name_start = skip_spaces(line, name_start)
 		var name_end := name_start
 		while name_end < line.length() and is_identifier_char(line[name_end]):
 			name_end += 1
@@ -177,7 +175,7 @@ static func identifier_type_for_lines(lines: Array, uri: String, identifier_name
 			if not local_type.is_empty():
 				return local_type
 
-		var parameter_type := function_parameter_type_from_line(str(lines[function_line]), identifier_name)
+		var parameter_type := function_parameter_type_for_lines(lines, function_line, identifier_name)
 		if not parameter_type.is_empty():
 			return parameter_type
 
@@ -251,6 +249,18 @@ static func function_parameter_type_from_line(line: String, parameter_name: Stri
 		return type_name_after_colon(parameter_text, colon_col)
 
 	return ""
+
+
+static func function_parameter_type_for_lines(lines: Array, function_line: int, parameter_name: String) -> String:
+	if function_line < 0 or function_line >= lines.size():
+		return ""
+
+	var signature_end := _function_signature_end_line(lines, function_line)
+	var signature_parts: Array[String] = []
+	for index in range(function_line, signature_end + 1):
+		signature_parts.append(strip_line_comment(str(lines[index])))
+
+	return function_parameter_type_from_line(" ".join(signature_parts), parameter_name)
 
 
 static func type_name_after_colon(line: String, colon_col: int) -> String:
@@ -359,12 +369,50 @@ static func _leading_whitespace_count(line: String) -> int:
 	return count
 
 
+static func _function_name_start(line: String) -> int:
+	var code_line := strip_line_comment(line)
+	var declaration_start := _leading_whitespace_count(code_line)
+	var func_index := code_line.find("func ", declaration_start)
+	if func_index == -1:
+		return -1
+
+	var modifier := code_line.substr(declaration_start, func_index - declaration_start).strip_edges()
+	if not modifier.is_empty() and modifier != "static":
+		return -1
+
+	return skip_spaces_and_tabs(code_line, func_index + 5)
+
+
+static func _function_signature_end_line(lines: Array, function_line: int) -> int:
+	var found_open_parenthesis := false
+	var parenthesis_depth := 0
+	for line_index in range(function_line, lines.size()):
+		var line := strip_line_comment(str(lines[line_index]))
+		var column := 0
+		while column < line.length():
+			var character := line[column]
+			if character == "\"" or character == "'":
+				column = _skip_quoted_string(line, column, character)
+				continue
+			if character == "(":
+				found_open_parenthesis = true
+				parenthesis_depth += 1
+			elif character == ")" and found_open_parenthesis:
+				parenthesis_depth -= 1
+				if parenthesis_depth == 0:
+					return line_index
+			column += 1
+
+	return function_line
+
+
 static func _line_belongs_to_function(lines: Array, function_line: int, line_index: int) -> bool:
-	if line_index == function_line:
+	var signature_end := _function_signature_end_line(lines, function_line)
+	if line_index <= signature_end:
 		return true
 
 	var function_indent := _leading_whitespace_count(str(lines[function_line]))
-	for index in range(function_line + 1, line_index + 1):
+	for index in range(signature_end + 1, line_index + 1):
 		var line := str(lines[index])
 		if line.strip_edges().is_empty():
 			continue

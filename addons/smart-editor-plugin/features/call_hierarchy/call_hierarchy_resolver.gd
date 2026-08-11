@@ -90,6 +90,8 @@ func references_to_call_sites(references: Array, request_method: CallHierarchyMe
 		)
 		if caller.is_empty():
 			continue
+		if line == caller.line and character >= caller.character and character < caller.character + caller.name.length():
+			continue
 		if caller.uri == request_method.uri and caller.line == request_method.line:
 			continue
 

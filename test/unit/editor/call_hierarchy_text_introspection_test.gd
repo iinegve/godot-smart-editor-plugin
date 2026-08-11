@@ -46,6 +46,47 @@ func test_enclosing_function_for_lines_ignores_top_level_comment_between_functio
 	assert_bool(symbol_range.is_empty()).is_true()
 
 
+func test_enclosing_function_for_lines_finds_static_function_with_multiline_signature() -> void:
+	var lines := [
+		"class_name PathSmoother",
+		"",
+		"static func unit_can_go_there(",
+		"\tunit: Unit, start: Vector3i, end: Vector3i, grid_geometry: GridGeometry, board_state: BoardState",
+		") -> bool:",
+		"\treturn board_state.cells_connected(a, b)",
+	]
+
+	var symbol_range = GDScriptTextIntrospection.enclosing_function_for_lines(
+		lines,
+		"file:///project/path_smoother.gd",
+		5
+	)
+
+	assert_str(symbol_range.name).is_equal("unit_can_go_there")
+	assert_int(symbol_range.line).is_equal(2)
+	assert_int(symbol_range.character).is_equal(12)
+
+
+func test_identifier_type_for_lines_finds_parameter_in_static_multiline_signature() -> void:
+	var lines := [
+		"class_name PathSmoother",
+		"",
+		"static func unit_can_go_there(",
+		"\tunit: Unit, start: Vector3i, end: Vector3i, grid_geometry: GridGeometry, board_state: BoardState",
+		") -> bool:",
+		"\treturn board_state.cells_connected(a, b)",
+	]
+
+	var receiver_type := GDScriptTextIntrospection.identifier_type_for_lines(
+		lines,
+		"file:///project/path_smoother.gd",
+		"board_state",
+		5
+	)
+
+	assert_str(receiver_type).is_equal("BoardState")
+
+
 func test_is_identifier_position_in_code_ignores_comments_and_strings() -> void:
 	var lines := [
 		"set.values()",
