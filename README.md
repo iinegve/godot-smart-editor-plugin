@@ -4,7 +4,7 @@ Smart Editor is a Godot editor plugin that adds small IDE-style conveniences to 
 
 ## Demo
 
-[![Watch the Smart Editor demo](https://img.youtube.com/vi/nbvFcb0kw1I/hqdefault.jpg)](https://www.youtube.com/watch?v=nbvFcb0kw1I)
+[![Watch the Smart Editor demo](https://img.youtube.com/vi/rqHHqKFbUds/hqdefault.jpg)](https://www.youtube.com/watch?v=rqHHqKFbUds)
 
 ## Features
 
