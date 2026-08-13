@@ -5,6 +5,7 @@ const SmartRenameWorkspaceEdit := preload("res://addons/smart-editor-plugin/comm
 const SymbolUsageModel := preload("res://addons/smart-editor-plugin/common/smart_symbol_usage_model.gd")
 const SmartEditorSettings := preload("res://addons/smart-editor-plugin/settings/smart_editor_settings.gd")
 const SmartEditorFiles := preload("res://addons/smart-editor-plugin/common/smart_editor_files.gd")
+const SmartEditorOpenScripts := preload("res://addons/smart-editor-plugin/common/smart_editor_open_scripts.gd")
 const GDScriptIdentifierValidator := preload("res://addons/smart-editor-plugin/common/gdscript_identifier_validator.gd")
 const RenameEditSet := preload("res://addons/smart-editor-plugin/features/symbol_renaming/rename_edit_set.gd")
 const RenameFileEdits := preload("res://addons/smart-editor-plugin/features/symbol_renaming/rename_file_edits.gd")
@@ -280,20 +281,10 @@ func _open_script_buffers_by_uri(affected_rename_edits: RenameEditSet = null) ->
 	if script_editor == null:
 		return buffers_by_uri
 
-	# Godot's C++ ScriptEditorBase can expose its edited resource, but that API is
-	# not available from GDScript. Pairing these two arrays is the only public
-	# editor API path we have for mapping an open Script to its CodeEdit.
-	var scripts: Array = script_editor.get_open_scripts()
-	var code_editors := _open_code_editors(script_editor)
-	var entry_count := mini(scripts.size(), code_editors.size())
 	var filter_by_edits := affected_rename_edits != null and not affected_rename_edits.is_empty()
 
-	for index in entry_count:
-		var script_value: Variant = scripts[index]
-		if not script_value is Script:
-			continue
-
-		var script: Script = script_value
+	for buffer in SmartEditorOpenScripts.from_script_editor(script_editor):
+		var script: Script = buffer.source_script
 		var script_path := _valid_script_path(script)
 		if script_path.is_empty():
 			continue
@@ -302,31 +293,9 @@ func _open_script_buffers_by_uri(affected_rename_edits: RenameEditSet = null) ->
 		if filter_by_edits and not affected_rename_edits.contains_uri(uri):
 			continue
 
-		var code: CodeEdit = code_editors[index]
-		if code == null:
-			continue
-
-		buffers_by_uri.add(RenameOpenScriptBuffer.create(uri, script, code))
+		buffers_by_uri.add(RenameOpenScriptBuffer.create(uri, script, buffer.code))
 
 	return buffers_by_uri
-
-
-func _open_code_editors(script_editor: ScriptEditor) -> Array[CodeEdit]:
-	var code_editors: Array[CodeEdit] = []
-	var editors: Array = script_editor.get_open_script_editors()
-
-	for editor in editors:
-		if editor == null:
-			code_editors.append(null)
-			continue
-
-		var code: CodeEdit = null
-		var base: Variant = editor.get_base_editor()
-		if base is CodeEdit:
-			code = base
-		code_editors.append(code)
-
-	return code_editors
 
 
 func _valid_script_path(script: Script) -> String:

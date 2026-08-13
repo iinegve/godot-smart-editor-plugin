@@ -1,6 +1,7 @@
 @tool
 extends Node
 
+const SmartEditorOpenScripts := preload("res://addons/smart-editor-plugin/common/smart_editor_open_scripts.gd")
 const SmartEditorFiles := preload("res://addons/smart-editor-plugin/common/smart_editor_files.gd")
 const SmartEditorLspPendingRequest := preload("res://addons/smart-editor-plugin/common/lsp/smart_editor_lsp_pending_request.gd")
 const SmartEditorLspResponse := preload("res://addons/smart-editor-plugin/common/lsp/smart_editor_lsp_response.gd")
@@ -86,29 +87,14 @@ func sync_open_scripts():
 	if script_editor == null:
 		return false
 
-	# Godot's C++ ScriptEditorBase can expose its edited resource, but that API is
-	# not available from GDScript. Pairing these two arrays is the only public
-	# editor API path we have for mapping an open Script to its CodeEdit.
-	var scripts: Array = script_editor.get_open_scripts()
-	var code_editors := _open_code_editors(script_editor)
-	var entry_count := mini(scripts.size(), code_editors.size())
-
-	for index in entry_count:
-		var script_value: Variant = scripts[index]
-		if not script_value is Script:
-			continue
-
-		var script: Script = script_value
+	for buffer in SmartEditorOpenScripts.from_script_editor(script_editor):
+		var script: Script = buffer.source_script
 		var script_path := _valid_script_path(script)
 		if script_path.is_empty():
 			continue
 
-		var code: CodeEdit = code_editors[index]
-		if code == null:
-			continue
-
 		var uri := SmartEditorFiles.path_to_file_uri(ProjectSettings.globalize_path(script_path))
-		if _sync_document_now(uri, _get_code_text(code)):
+		if _sync_document_now(uri, _get_code_text(buffer.code)):
 			synced_any = true
 
 	return synced_any
@@ -377,24 +363,6 @@ func _next_request_id() -> int:
 	var request_id := _next_id
 	_next_id += 1
 	return request_id
-
-
-func _open_code_editors(script_editor: ScriptEditor) -> Array[CodeEdit]:
-	var code_editors: Array[CodeEdit] = []
-	var editors: Array = script_editor.get_open_script_editors()
-
-	for editor in editors:
-		if editor == null:
-			code_editors.append(null)
-			continue
-
-		var code: CodeEdit = null
-		var base: Variant = editor.get_base_editor()
-		if base is CodeEdit:
-			code = base
-		code_editors.append(code)
-
-	return code_editors
 
 
 func _valid_script_path(script: Script) -> String:
