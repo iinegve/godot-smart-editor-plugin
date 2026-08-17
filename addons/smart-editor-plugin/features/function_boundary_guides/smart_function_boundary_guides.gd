@@ -411,10 +411,12 @@ func _line_overlay_rect(line: int) -> Rect2:
 
 func _visible_line_overlay_rect(line: int) -> Rect2:
 	var direct_rect := Rect2(_code.get_rect_at_line_column(line, 0))
-	if direct_rect.position.y < 0.0 or direct_rect.size.y <= 0.0:
-		return Rect2(-1.0, -1.0, 0.0, 0.0)
+	if direct_rect.position.y >= 0.0 and direct_rect.size.y > 0.0:
+		return _code_rect_to_overlay_rect(direct_rect)
 
-	return _code_rect_to_overlay_rect(direct_rect)
+	# Godot returns no rectangle when column 0 is outside the horizontal viewport,
+	# even though the line itself is still vertically visible.
+	return _line_overlay_rect_from_scroll_position(line)
 
 
 func _line_overlay_rect_from_scroll_position(line: int) -> Rect2:

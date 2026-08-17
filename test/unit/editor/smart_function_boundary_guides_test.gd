@@ -206,8 +206,12 @@ func test_indent_guide_block_border_columns_ignore_partial_indent() -> void:
 	assert_array(Array(FunctionBoundaryGuides.indent_guide_block_border_columns(3, 4))).is_empty()
 
 
-func test_indent_guide_x_uses_content_start_column_width_and_horizontal_scroll() -> void:
-	assert_float(FunctionBoundaryGuides.indent_guide_x(48.0, 8, 7.5, 10.0)).is_equal(98.0)
+func test_indent_guide_x_moves_left_with_horizontally_scrolled_text() -> void:
+	var initial_x := FunctionBoundaryGuides.indent_guide_x(48.0, 8, 7.5, 0.0)
+	var scrolled_x := FunctionBoundaryGuides.indent_guide_x(48.0, 8, 7.5, 10.0)
+
+	assert_float(initial_x).is_equal(108.0)
+	assert_float(scrolled_x).is_equal(initial_x - 10.0)
 
 
 func test_indent_column_width_includes_font_space_spacing() -> void:
