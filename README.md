@@ -13,7 +13,7 @@ Smart Editor is a Godot editor plugin that adds small IDE-style conveniences to 
 - Highlights in the visible editor area for the symbol under the caret.
 - Function boundary guides that draw subtle horizontal lines between functions to make indentation-based code easier to scan.
 - Indent guides that draw subtle vertical lines along block indentation levels.
-- Call Hierarchy, a lazy dockable view that shows callers of the function under the caret.
+- Call Hierarchy, a movable dock view that shows callers of the function under the caret.
 - Extract Local Variable for selected expressions.
 - Inline Variable for simple local variable declarations.
 - Rename Symbol for the symbol under the caret, including symbols used across multiple files.

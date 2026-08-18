@@ -56,6 +56,8 @@ func configure(plugin: EditorPlugin, lsp_service: Node) -> void:
 func _enter_tree() -> void:
 	_ensure_collaborators()
 	_init_settings()
+	if _call_hierarchy_enabled():
+		_dock.ensure_created()
 	set_process_shortcut_input(true)
 	set_process(true)
 

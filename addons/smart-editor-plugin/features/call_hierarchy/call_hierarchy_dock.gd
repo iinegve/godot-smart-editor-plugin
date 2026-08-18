@@ -6,6 +6,8 @@ const CallHierarchyTreeNode := preload("res://addons/smart-editor-plugin/feature
 
 
 var plugin: EditorPlugin
+var editor_dock: MarginContainer
+var editor_dock_factory: Callable
 var panel: VBoxContainer
 var toolbar: HBoxContainer
 var go_to_button: Button
@@ -23,7 +25,8 @@ func configure(
 	new_go_to_shortcut_provider: Callable,
 	new_load_node_callback: Callable,
 	new_open_location_callback: Callable,
-	new_focus_editor_callback: Callable
+	new_focus_editor_callback: Callable,
+	new_editor_dock_factory: Callable = Callable()
 ) -> void:
 	plugin = new_plugin
 	tree_font_size_provider = new_tree_font_size_provider
@@ -31,15 +34,29 @@ func configure(
 	load_node_callback = new_load_node_callback
 	open_location_callback = new_open_location_callback
 	focus_editor_callback = new_focus_editor_callback
+	editor_dock_factory = new_editor_dock_factory
 
 
 func ensure_created() -> void:
-	if panel != null:
+	if editor_dock != null:
 		return
+
+	if editor_dock_factory.is_valid():
+		editor_dock = editor_dock_factory.call()
+	else:
+		editor_dock = EditorDock.new()
+	editor_dock.name = "SmartCallHierarchyDock"
+	editor_dock.set("title", "Call Hierarchy")
+	editor_dock.set("layout_key", "Call Hierarchy")
+	editor_dock.set("default_slot", EditorDock.DOCK_SLOT_RIGHT_UL)
+	editor_dock.set("available_layouts", EditorDock.DOCK_LAYOUT_ALL)
 
 	panel = VBoxContainer.new()
 	panel.name = "Call Hierarchy"
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	panel.add_theme_constant_override("separation", 6)
+	editor_dock.add_child(panel)
 
 	toolbar = HBoxContainer.new()
 	toolbar.add_theme_constant_override("separation", 4)
@@ -63,17 +80,19 @@ func ensure_created() -> void:
 	panel.add_child(tree)
 
 	if plugin != null:
-		plugin.add_control_to_dock(EditorPlugin.DOCK_SLOT_RIGHT_UL, panel)
-	call_deferred("_apply_dock_tab_icon")
+		plugin.add_dock(editor_dock as EditorDock)
+		editor_dock.call("close")
+	call_deferred("_apply_dock_icon")
 
 
 func destroy() -> void:
-	if panel == null:
+	if editor_dock == null:
 		return
 
 	if plugin != null:
-		plugin.remove_control_from_docks(panel)
-	panel.queue_free()
+		plugin.remove_dock(editor_dock as EditorDock)
+	editor_dock.queue_free()
+	editor_dock = null
 	panel = null
 	toolbar = null
 	go_to_button = null
@@ -81,27 +100,33 @@ func destroy() -> void:
 
 
 func show() -> void:
-	if panel == null:
+	if editor_dock == null:
 		return
 
 	apply_tree_font_size()
-	_apply_dock_tab_icon()
-	panel.show()
+	_apply_dock_icon()
+	editor_dock.call("make_visible")
 
-	var parent := panel.get_parent()
+	var parent := editor_dock.get_parent()
+	if parent is CanvasItem and not (parent as CanvasItem).visible:
+		_show_hidden_side_dock()
+
+	call_deferred("focus_tree")
+
+
+func _show_hidden_side_dock() -> void:
+	var parent := editor_dock.get_parent()
+
 	while parent != null:
 		if parent is CanvasItem:
 			(parent as CanvasItem).show()
 		if parent is TabContainer:
 			var tabs := parent as TabContainer
 			for index in tabs.get_tab_count():
-				if tabs.get_tab_control(index) == panel:
+				if tabs.get_tab_control(index) == editor_dock:
 					tabs.current_tab = index
-					call_deferred("focus_tree")
 					return
 		parent = parent.get_parent()
-
-	call_deferred("focus_tree")
 
 
 func clear() -> void:
@@ -210,16 +235,15 @@ func _apply_go_to_button_icon() -> void:
 	go_to_button.text = "Go"
 
 
-func _apply_dock_tab_icon() -> void:
-	if panel == null:
+func _apply_dock_icon() -> void:
+	if editor_dock == null:
 		return
 
 	var icon := _get_call_hierarchy_icon()
 	if icon == null:
 		return
 
-	if plugin != null:
-		plugin.set_dock_tab_icon(panel, icon)
+	editor_dock.set("dock_icon", icon)
 
 
 func _get_call_hierarchy_icon() -> Texture2D:

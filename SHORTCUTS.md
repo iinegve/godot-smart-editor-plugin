@@ -16,3 +16,4 @@ Configurable shortcuts can be changed in `Editor Settings` under `Plugin` -> `Sm
 - `Select Call Site`: arrow keys
 - `Go to Selected Call Hierarchy Method`: `F4` or double-click
 - `Return Focus to Script Editor`: `Esc`
+- `Move Call Hierarchy`: right-click its tab and choose a side dock, the bottom panel, or a floating window.
