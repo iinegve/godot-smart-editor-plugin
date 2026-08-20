@@ -3,6 +3,7 @@ extends Control
 
 const DEFAULT_GUIDE_COLOR := Color(0.78, 0.78, 0.78, 0.18)
 const GUIDE_WIDTH := 1.0
+const ACTIVE_GUIDE_FOREGROUND_BLEND := 0.65
 
 var _function_separator_guides_enabled_setting: StringName = &""
 var _indent_guides_enabled_setting: StringName = &""
@@ -14,6 +15,9 @@ var _boundaries: Array[Dictionary] = []
 var _boundaries_dirty := true
 var _folded_lines_signature := ""
 var _line_top_offset := -1.0
+var _active_indent_guide_column := -1
+var _active_indent_guide_from_line := -1
+var _active_indent_guide_to_line := -1
 
 
 func _ready() -> void:
@@ -72,6 +76,7 @@ func attach_to_code(code: CodeEdit) -> void:
 	_folded_lines_signature = _current_folded_lines_signature()
 	set_process(true)
 	_invalidate_boundaries()
+	_update_active_indent_guide()
 
 
 static func function_boundaries(text: String) -> Array[Dictionary]:
@@ -212,6 +217,7 @@ func _draw_indent_guides(guide_color: Color, visible_lines: Vector2i) -> void:
 		return
 
 	var start_x := _guide_start_x()
+	var highlighted_guide_color := _highlighted_guide_color(guide_color)
 	for line in range(visible_lines.x, visible_lines.y + 1):
 		if line < 0 or line >= _code.get_line_count():
 			continue
@@ -225,11 +231,12 @@ func _draw_indent_guides(guide_color: Color, visible_lines: Vector2i) -> void:
 			var x := indent_guide_x(start_x, visual_column, column_width, float(_code.get_h_scroll()))
 			if x < start_x or x > size.x:
 				continue
+			var color := highlighted_guide_color if _is_active_indent_guide_segment(line, visual_column) else guide_color
 
 			draw_line(
 				Vector2(x, line_rect.position.y),
 				Vector2(x, line_rect.position.y + line_rect.size.y),
-				guide_color,
+				color,
 				GUIDE_WIDTH
 			)
 
@@ -300,6 +307,38 @@ static func indent_guide_x(start_x: float, visual_column: int, column_width: flo
 
 static func indent_column_width(space_character_width: float, space_spacing: float) -> float:
 	return space_character_width + space_spacing
+
+
+static func indent_guide_column_at_caret(
+	line: String,
+	caret_column: int,
+	indent_size: int,
+	tab_size: int
+) -> int:
+	if caret_column < 0 or caret_column >= line.length() or indent_size <= 0 or tab_size <= 0:
+		return -1
+
+	var visual_column := 0
+	for index in caret_column:
+		var ch := line[index]
+		if ch == " ":
+			visual_column += 1
+		elif ch == "\t":
+			visual_column += tab_size - visual_column % tab_size
+		else:
+			return -1
+
+	var caret_character := line[caret_column]
+	if caret_character != " " and caret_character != "\t":
+		return -1
+	if visual_column % indent_size != 0:
+		return -1
+
+	return visual_column
+
+
+static func highlighted_guide_color(guide_color: Color, foreground_color: Color) -> Color:
+	return guide_color.lerp(foreground_color, ACTIVE_GUIDE_FOREGROUND_BLEND)
 
 
 func _function_separator_guide_line(start_line: int) -> int:
@@ -383,6 +422,16 @@ func _indent_size() -> int:
 		return maxi(1, int(indent_size))
 
 	return 1
+
+
+func _tab_size() -> int:
+	if _code == null or not is_instance_valid(_code):
+		return _indent_size()
+	if _code.has_method("get_tab_size"):
+		var tab_size: Variant = _code.call("get_tab_size")
+		return maxi(1, int(tab_size))
+
+	return _indent_size()
 
 
 func _indent_column_width() -> float:
@@ -540,6 +589,8 @@ func _connect_code() -> void:
 		_code.text_changed.connect(_on_code_changed)
 	if not _code.resized.is_connected(_on_code_changed):
 		_code.resized.connect(_on_code_changed)
+	if not _code.caret_changed.is_connected(_on_code_caret_changed):
+		_code.caret_changed.connect(_on_code_caret_changed)
 
 	_v_scroll_bar = _code.get_v_scroll_bar()
 	if _v_scroll_bar != null and not _v_scroll_bar.value_changed.is_connected(_on_scroll_changed):
@@ -560,6 +611,8 @@ func _disconnect_code() -> void:
 			_code.text_changed.disconnect(_on_code_changed)
 		if _code.resized.is_connected(_on_code_changed):
 			_code.resized.disconnect(_on_code_changed)
+		if _code.caret_changed.is_connected(_on_code_caret_changed):
+			_code.caret_changed.disconnect(_on_code_caret_changed)
 
 	if _v_scroll_bar != null and is_instance_valid(_v_scroll_bar) and _v_scroll_bar.value_changed.is_connected(_on_scroll_changed):
 		_v_scroll_bar.value_changed.disconnect(_on_scroll_changed)
@@ -574,6 +627,7 @@ func _disconnect_code() -> void:
 	_v_scroll_bar = null
 	_h_scroll_bar = null
 	_folded_lines_signature = ""
+	_clear_active_indent_guide()
 	set_process(false)
 
 
@@ -642,6 +696,11 @@ func _guide_color() -> Color:
 
 func _on_code_changed() -> void:
 	_invalidate_boundaries()
+	_update_active_indent_guide()
+
+
+func _on_code_caret_changed() -> void:
+	_update_active_indent_guide()
 
 
 func _on_scroll_changed(_value: float) -> void:
@@ -654,6 +713,68 @@ func _on_scroll_bar_changed() -> void:
 
 func _on_editor_settings_changed() -> void:
 	_invalidate_boundaries()
+	_update_active_indent_guide()
+
+
+func _update_active_indent_guide() -> void:
+	_clear_active_indent_guide()
+	if _code == null or not is_instance_valid(_code) or not _indent_guides_enabled():
+		queue_redraw()
+		return
+
+	var caret_line := _code.get_caret_line()
+	if caret_line < 0 or caret_line >= _code.get_line_count():
+		queue_redraw()
+		return
+
+	var indent_size := _indent_size()
+	var guide_column := indent_guide_column_at_caret(
+		_code.get_line(caret_line),
+		_code.get_caret_column(),
+		indent_size,
+		_tab_size()
+	)
+	if guide_column < 0 or not _line_contains_indent_guide(caret_line, guide_column, indent_size):
+		queue_redraw()
+		return
+
+	var from_line := caret_line
+	while from_line > 0 and _line_contains_indent_guide(from_line - 1, guide_column, indent_size):
+		from_line -= 1
+
+	var to_line := caret_line
+	while to_line + 1 < _code.get_line_count() and _line_contains_indent_guide(to_line + 1, guide_column, indent_size):
+		to_line += 1
+
+	_active_indent_guide_column = guide_column
+	_active_indent_guide_from_line = from_line
+	_active_indent_guide_to_line = to_line
+	queue_redraw()
+
+
+func _line_contains_indent_guide(line: int, guide_column: int, indent_size: int) -> bool:
+	return _guide_indent_level(line) >= guide_column + indent_size
+
+
+func _is_active_indent_guide_segment(line: int, guide_column: int) -> bool:
+	return (
+		guide_column == _active_indent_guide_column
+		and line >= _active_indent_guide_from_line
+		and line <= _active_indent_guide_to_line
+	)
+
+
+func _clear_active_indent_guide() -> void:
+	_active_indent_guide_column = -1
+	_active_indent_guide_from_line = -1
+	_active_indent_guide_to_line = -1
+
+
+func _highlighted_guide_color(guide_color: Color) -> Color:
+	if _code == null or not is_instance_valid(_code):
+		return guide_color
+
+	return highlighted_guide_color(guide_color, _code.get_theme_color("font_color"))
 
 
 func _current_folded_lines_signature() -> String:

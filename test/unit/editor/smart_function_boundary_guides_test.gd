@@ -218,6 +218,82 @@ func test_indent_column_width_includes_font_space_spacing() -> void:
 	assert_float(FunctionBoundaryGuides.indent_column_width(8.5, 1.0)).is_equal(9.5)
 
 
+func test_indent_guide_keeps_same_width_when_highlighted() -> void:
+	assert_float(FunctionBoundaryGuides.GUIDE_WIDTH).is_equal(1.0)
+
+
+func test_indent_guide_column_at_caret_matches_space_indent_border() -> void:
+	assert_int(FunctionBoundaryGuides.indent_guide_column_at_caret("        value", 4, 4, 4)).is_equal(4)
+
+
+func test_indent_guide_column_at_caret_ignores_position_between_guides() -> void:
+	assert_int(FunctionBoundaryGuides.indent_guide_column_at_caret("        value", 2, 4, 4)).is_equal(-1)
+
+
+func test_indent_guide_column_at_caret_ignores_start_of_code() -> void:
+	assert_int(FunctionBoundaryGuides.indent_guide_column_at_caret("        value", 8, 4, 4)).is_equal(-1)
+
+
+func test_indent_guide_column_at_caret_uses_visual_tab_columns() -> void:
+	assert_int(FunctionBoundaryGuides.indent_guide_column_at_caret("\t\tvalue", 1, 4, 4)).is_equal(4)
+
+
+func test_highlighted_guide_color_blends_toward_editor_foreground() -> void:
+	var guide_color := Color(0.2, 0.3, 0.4, 0.2)
+	var foreground_color := Color(0.8, 0.9, 1.0, 1.0)
+	var highlighted := FunctionBoundaryGuides.highlighted_guide_color(guide_color, foreground_color)
+
+	assert_float(highlighted.r).is_greater(guide_color.r)
+	assert_float(highlighted.g).is_greater(guide_color.g)
+	assert_float(highlighted.b).is_greater(guide_color.b)
+	assert_float(highlighted.a).is_greater(guide_color.a)
+
+
+func test_caret_on_indent_guide_highlights_only_contiguous_block_range() -> void:
+	var code := CodeEdit.new()
+	code.indent_size = 4
+	code.text = "\n".join([
+		"func update() -> void:",
+		"    for item in items:",
+		"        if item.active:",
+		"            while item.pending:",
+		"                process(item)",
+		"            finish(item)",
+		"        continue",
+	])
+	code.set_caret_line(4)
+	code.set_caret_column(8)
+	var guides := FunctionBoundaryGuides.new()
+	guides.attach_to_code(code)
+
+	assert_int(guides._active_indent_guide_column).is_equal(8)
+	assert_int(guides._active_indent_guide_from_line).is_equal(3)
+	assert_int(guides._active_indent_guide_to_line).is_equal(5)
+
+	guides.free()
+	code.free()
+
+
+func test_moving_caret_between_indent_guides_clears_highlight() -> void:
+	var code := CodeEdit.new()
+	code.indent_size = 4
+	code.text = "        value"
+	code.set_caret_column(4)
+	var guides := FunctionBoundaryGuides.new()
+	guides.attach_to_code(code)
+	assert_int(guides._active_indent_guide_column).is_equal(4)
+
+	code.set_caret_column(2)
+	guides._on_code_caret_changed()
+
+	assert_int(guides._active_indent_guide_column).is_equal(-1)
+	assert_int(guides._active_indent_guide_from_line).is_equal(-1)
+	assert_int(guides._active_indent_guide_to_line).is_equal(-1)
+
+	guides.free()
+	code.free()
+
+
 func _boundary(header_line: int, end_line: int, indent: int, start_line: int = -1) -> Dictionary:
 	if start_line == -1:
 		start_line = header_line
