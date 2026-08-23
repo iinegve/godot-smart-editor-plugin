@@ -47,7 +47,7 @@ Then enable `Smart Editor` from the Plugins tab.
 
 ## Compatibility
 
-Smart Editor is developed and tested with Godot `4.6.1`. Other Godot `4.6.x` releases may work, but `4.6.1` is the supported version for the first Asset Library release.
+Smart Editor is developed and tested with Godot `4.7`. Godot `4.7.x` is the supported editor line.
 
 ## License
 

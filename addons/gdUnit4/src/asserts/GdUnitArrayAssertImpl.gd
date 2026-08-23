@@ -37,10 +37,6 @@ func report_error(error: String) -> GdUnitArrayAssert:
 	return self
 
 
-func failure_message() -> String:
-	return _base.failure_message()
-
-
 func override_failure_message(message: String) -> GdUnitArrayAssert:
 	@warning_ignore("return_value_discarded")
 	_base.override_failure_message(message)
@@ -75,7 +71,7 @@ func _toPackedStringArray(value: Variant) -> PackedStringArray:
 	return PackedStringArray([str(value)])
 
 
-func _array_equals_div(current: Variant, expected: Variant, case_sensitive: bool = false) -> Array:
+func _array_equals_div(current: Variant, expected: Variant, case_sensitive: bool = true) -> Array:
 	var current_value := _toPackedStringArray(current)
 	var expected_value := _toPackedStringArray(expected)
 	var index_report := Array()
@@ -106,7 +102,7 @@ func _array_div(compare_mode: GdObjects.COMPARE_MODE, left: Array[Variant], righ
 		var c: Variant = left[index_c]
 		for index_e in right.size():
 			var e: Variant = right[index_e]
-			if GdObjects.equals(c, e, false, compare_mode):
+			if GdObjects.equals(c, e, true, compare_mode):
 				GdArrayTools.erase_value(not_expect, e)
 				GdArrayTools.erase_value(not_found, c)
 				break
@@ -140,10 +136,10 @@ func _contains_exactly(expected: Array, compare_mode: GdObjects.COMPARE_MODE) ->
 	if current_value == null:
 		return report_error(GdAssertMessages.error_arr_contains_exactly(null, expected_value, [], expected_value, compare_mode))
 	# has same content in same order
-	if _is_equal(current_value, expected_value, false, compare_mode):
+	if _is_equal(current_value, expected_value, true, compare_mode):
 		return report_success()
 	# check has same elements but in different order
-	if _is_equals_sorted(current_value, expected_value, false, compare_mode):
+	if _is_equals_sorted(current_value, expected_value, true, compare_mode):
 		return report_error(GdAssertMessages.error_arr_contains_exactly(current_value, expected_value, [], [], compare_mode))
 	# find the difference
 	@warning_ignore("unsafe_cast")
@@ -234,7 +230,7 @@ func is_equal_ignoring_case(...expected: Array) -> GdUnitArrayAssert:
 		@warning_ignore("unsafe_cast")
 		return report_error(GdAssertMessages.error_equal(null, GdArrayTools.as_string(expected_value)))
 
-	if not _is_equal(current_value, expected_value, true):
+	if not _is_equal(current_value, expected_value, false):
 		@warning_ignore("unsafe_cast")
 		var diff := _array_equals_div(current_value, expected_value, true)
 		var expected_as_list := GdArrayTools.as_string(diff[0])
@@ -261,7 +257,7 @@ func is_not_equal_ignoring_case(...expected: Array) -> GdUnitArrayAssert:
 	if not _validate_value_type(expected_value):
 		return report_error("ERROR: expected value: <%s>\n is not a Array Type!" % GdObjects.typeof_as_string(expected_value))
 
-	if _is_equal(current_value, expected_value, true):
+	if _is_equal(current_value, expected_value, false):
 		@warning_ignore("unsafe_cast")
 		var c := GdArrayTools.as_string(current_value as Array)
 		@warning_ignore("unsafe_cast")
@@ -398,7 +394,7 @@ func _extract_variadic_value(values: Variant) -> Variant:
 func _is_equal(
 	left: Variant,
 	right: Variant,
-	case_sensitive := false,
+	case_sensitive := true,
 	compare_mode := GdObjects.COMPARE_MODE.PARAMETER_DEEP_TEST) -> bool:
 
 	@warning_ignore("unsafe_cast")
@@ -413,7 +409,7 @@ func _is_equal(
 func _is_equals_sorted(
 	left: Variant,
 	right: Variant,
-	case_sensitive := false,
+	case_sensitive := true,
 	compare_mode := GdObjects.COMPARE_MODE.PARAMETER_DEEP_TEST) -> bool:
 
 	@warning_ignore("unsafe_cast")

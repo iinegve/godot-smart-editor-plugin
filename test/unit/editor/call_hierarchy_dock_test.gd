@@ -33,6 +33,7 @@ func test_dock_configures_native_movable_editor_dock() -> void:
 	assert_object(dock.panel.get_parent()).is_equal(dock.editor_dock)
 
 	dock.destroy()
+	await get_tree().process_frame
 
 
 func test_dock_renders_root_and_children_with_metadata() -> void:
@@ -58,6 +59,7 @@ func test_dock_renders_root_and_children_with_metadata() -> void:
 	assert_object(dock.tree.get_root().get_first_child().get_metadata(0)).is_equal(child_node)
 
 	dock.destroy()
+	await get_tree().process_frame
 
 
 func _create_dock() -> CallHierarchyDock:
