@@ -8,6 +8,7 @@ const SETTINGS_PREFIX := &"plugin/smart_editor/"
 const SETTING_EDITOR_PREFIX := SETTINGS_PREFIX + &"editor/"
 const SETTING_HIGHLIGHTS_PREFIX := SETTINGS_PREFIX + &"highlights/"
 const SETTING_FUNCTION_BOUNDARY_PREFIX := SETTINGS_PREFIX + &"function_boundary_guides/"
+const SETTING_GIT_CHANGES_PREFIX := SETTINGS_PREFIX + &"git_changes/"
 const SETTING_EXPAND_SHORTCUT := SETTING_EDITOR_PREFIX + &"expand_selection"
 const SETTING_SHRINK_SHORTCUT := SETTING_EDITOR_PREFIX + &"shrink_selection"
 const SETTING_EXTRACT_SHORTCUT := SETTING_EDITOR_PREFIX + &"extract_local_variable"
@@ -21,6 +22,7 @@ const SETTING_SYMBOL_USAGE_CURRENT_OUTLINE_COLOR := SETTING_HIGHLIGHTS_PREFIX + 
 const SETTING_FUNCTION_SEPARATOR_GUIDES_ENABLED := SETTING_FUNCTION_BOUNDARY_PREFIX + &"show_function_separator_guides"
 const SETTING_FUNCTION_BOUNDARY_INDENT_GUIDES_ENABLED := SETTING_FUNCTION_BOUNDARY_PREFIX + &"show_indent_guides"
 const SETTING_FUNCTION_BOUNDARY_GUIDE_COLOR := SETTING_FUNCTION_BOUNDARY_PREFIX + &"guide_color"
+const SETTING_GIT_CHANGE_MARKERS_ENABLED := SETTING_GIT_CHANGES_PREFIX + &"show_change_markers"
 
 const LEGACY_SETTING_SYMBOL_USAGE_STRIPE_ENABLED := SETTINGS_PREFIX + &"symbol_usage_stripe_enabled"
 const LEGACY_SETTING_SYMBOL_USAGE_HIGHLIGHT_ENABLED := SETTINGS_PREFIX + &"symbol_usage_highlight_enabled"
@@ -117,6 +119,10 @@ static func init_function_boundary_settings() -> void:
 		PREVIOUS_SETTING_FUNCTION_BOUNDARY_GUIDES_ENABLED,
 	])
 	_init_setting(SETTING_FUNCTION_BOUNDARY_INDENT_GUIDES_ENABLED, true, TYPE_BOOL)
+
+
+static func init_git_changes_settings() -> void:
+	_init_setting(SETTING_GIT_CHANGE_MARKERS_ENABLED, true, TYPE_BOOL)
 
 
 static func get_setting(path: StringName, default_value: Variant) -> Variant:

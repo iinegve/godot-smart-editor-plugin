@@ -2,11 +2,7 @@
 
 Settings are available in `Editor Settings` under `Plugin` -> `Smart Editor`.
 
-The highlights stripe, visible highlights, function boundary guides, and indent guides update automatically while editing and can be configured here.
-
-## Editor
-
-- `Dialog Width`: width used by Smart Editor dialogs.
+Git change markers, the highlights stripe, visible highlights, function boundary guides, and indent guides update automatically while editing and can be configured here.
 
 ## Highlights
 
@@ -16,10 +12,14 @@ The highlights stripe, visible highlights, function boundary guides, and indent 
 - `Current Highlight Color`: background color for the current usage.
 - `Current Outline Color`: outline color for the current usage.
 
+## Git Changes
+
+- `Show Change Markers`: show or hide Git-aware markers in the left script-editor gutter. Enabled by default; it uses `git` from `PATH` and stays inactive if that executable or a usable Git `HEAD` baseline is unavailable.
+
 ## Call Hierarchy
 
 - `Enabled`: enable or disable the call hierarchy shortcut and dock.
-- `Tree Font Size`: font size used in the call hierarchy tree.
+- `Tree Font Size`: font size used in the call hierarchy tree. Defaults to 14.
 - `Max Nodes`: maximum number of hierarchy nodes to load.
 
 ## Function Boundary Guides

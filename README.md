@@ -8,6 +8,7 @@ Smart Editor is a Godot editor plugin that adds small IDE-style conveniences to 
 
 ## Features
 
+- Git change markers in the left editor gutter: green for added lines, blue for modified lines, and gray for deleted-line boundaries. Click a marker to view the previous `HEAD` lines.
 - Smart expand/shrink selection for GDScript expressions, statements, blocks, function bodies, comments, multiline calls, arrays, dictionaries, and function signatures.
 - Highlights stripe, a narrow mark strip beside the script editor scrollbar showing usages of the symbol under the caret in the current file.
 - Highlights in the visible editor area for the symbol under the caret.
@@ -28,6 +29,8 @@ Smart Editor does not try to be a full semantic refactoring engine. Its refactor
 - `Extract Local Variable` and `Inline Variable` operate on recognized GDScript text patterns. They do not perform complete semantic analysis.
 - Smart selection is based on a custom parser for practical editor selection ranges, not Godot's compiler AST. Some unusual syntax can still need more test cases.
 - Highlights are focused on the currently open script, not a project-wide usage view. Occurrences must be fully visible in the editor viewport to be painted; partially clipped symbols may not be highlighted.
+- Git change markers compare the current editor buffer to the file in `HEAD`, not to the Git index. Staged changes therefore remain marked until they are committed. The feature uses the default `git` executable from the editor process's `PATH`; if its one-time startup check fails, it reports a warning and remains inactive until the plugin or editor is reloaded. It also stays hidden for projects outside a Git repository or repositories without a commit.
+- A path absent from `HEAD`, including a renamed destination, is shown as entirely new. Rename detection, staging, reverting, committing, change navigation, and configurable marker colors are not included.
 
 ## Shortcuts
 
@@ -47,7 +50,7 @@ Then enable `Smart Editor` from the Plugins tab.
 
 ## Compatibility
 
-Smart Editor is developed and tested with Godot `4.7`. Godot `4.7.x` is the supported editor line.
+Smart Editor is developed and tested with Godot `4.7.x`. It may also work with Godot `4.6.x`, but that editor line is best-effort and not officially supported.
 
 ## License
 

@@ -9,6 +9,7 @@ const LocalVariableInliningController := preload("res://addons/smart-editor-plug
 const SmartSymbolUsageController := preload("res://addons/smart-editor-plugin/features/highlights/smart_symbol_usage_controller.gd")
 const LspSymbolUsageController := preload("res://addons/smart-editor-plugin/features/highlights/lsp_symbol_usage_controller.gd")
 const SmartFunctionBoundaryGuidesController := preload("res://addons/smart-editor-plugin/features/function_boundary_guides/smart_function_boundary_guides_controller.gd")
+const GitChangesController := preload("res://addons/smart-editor-plugin/features/git_changes/git_changes_controller.gd")
 const CallHierarchyController := preload("res://addons/smart-editor-plugin/features/call_hierarchy/call_hierarchy_controller.gd")
 const SmartEditorLspService := preload("res://addons/smart-editor-plugin/common/lsp/smart_editor_lsp_service.gd")
 
@@ -20,6 +21,7 @@ var _local_variable_inlining_controller: Node
 var _symbol_usage_controller: Node
 var _call_hierarchy_controller: Node
 var _function_boundary_guides_controller: Node
+var _git_changes_controller: Node
 
 
 func _enter_tree() -> void:
@@ -89,8 +91,18 @@ func _enter_tree() -> void:
 		SmartEditorSettings.SETTING_FUNCTION_BOUNDARY_GUIDE_COLOR
 	)
 
+	SmartEditorSettings.init_git_changes_settings()
+
+	_git_changes_controller = GitChangesController.new()
+	_git_changes_controller.name = "SmartGitChangesController"
+	add_child(_git_changes_controller)
+	_git_changes_controller.configure(SmartEditorSettings.SETTING_GIT_CHANGE_MARKERS_ENABLED)
+
 
 func _exit_tree() -> void:
+	if _git_changes_controller != null:
+		_git_changes_controller.queue_free()
+		_git_changes_controller = null
 	if _function_boundary_guides_controller != null:
 		_function_boundary_guides_controller.queue_free()
 		_function_boundary_guides_controller = null
