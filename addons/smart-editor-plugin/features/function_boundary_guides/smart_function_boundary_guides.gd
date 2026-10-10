@@ -389,8 +389,8 @@ func _guide_indent_level(line: int) -> int:
 	if not text.strip_edges().is_empty():
 		return _raw_indent_level(line)
 
-	var previous_line := _previous_non_empty_line_before(line)
-	var next_line := _next_non_empty_line_after(line)
+	var previous_line := _previous_non_empty_line_before(line, true)
+	var next_line := _next_non_empty_line_after(line, true)
 	var previous_indent := _raw_indent_level(previous_line) if previous_line != -1 else -1
 	var next_indent := _raw_indent_level(next_line) if next_line != -1 else -1
 
@@ -459,6 +459,10 @@ func _line_overlay_rect(line: int) -> Rect2:
 
 
 func _visible_line_overlay_rect(line: int) -> Rect2:
+	# Folded lines share the following visible row's scroll position.
+	if _code.get_visible_line_count_in_range(line, line) == 0:
+		return Rect2()
+
 	var direct_rect := Rect2(_code.get_rect_at_line_column(line, 0))
 	if direct_rect.position.y >= 0.0 and direct_rect.size.y > 0.0:
 		return _code_rect_to_overlay_rect(direct_rect)
@@ -529,27 +533,29 @@ func _code_top_content_margin() -> float:
 	return stylebox.get_content_margin(SIDE_TOP)
 
 
-func _previous_non_empty_line_before(line: int) -> int:
+func _previous_non_empty_line_before(line: int, skip_folded: bool = false) -> int:
 	if _code == null or not is_instance_valid(_code):
 		return -1
 
 	var search_line := mini(line - 1, _code.get_line_count() - 1)
 	while search_line >= 0:
 		if not _code.get_line(search_line).strip_edges().is_empty():
-			return search_line
+			if not skip_folded or _code.get_visible_line_count_in_range(search_line, search_line) > 0:
+				return search_line
 		search_line -= 1
 
 	return -1
 
 
-func _next_non_empty_line_after(line: int) -> int:
+func _next_non_empty_line_after(line: int, skip_folded: bool = false) -> int:
 	if _code == null or not is_instance_valid(_code):
 		return -1
 
 	var search_line := maxi(0, line + 1)
 	while search_line < _code.get_line_count():
 		if not _code.get_line(search_line).strip_edges().is_empty():
-			return search_line
+			if not skip_folded or _code.get_visible_line_count_in_range(search_line, search_line) > 0:
+				return search_line
 		search_line += 1
 
 	return -1

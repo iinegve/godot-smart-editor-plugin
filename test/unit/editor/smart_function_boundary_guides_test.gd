@@ -190,6 +190,91 @@ func test_folded_lines_signature_changes_when_folded_lines_change() -> void:
 	assert_str(initial).is_not_equal(changed)
 
 
+func test_folded_function_body_has_no_overlay_rect_until_unfolded() -> void:
+	var code := _create_foldable_code([
+		"func folded() -> void:",
+		"    if first:",
+		"        if second:",
+		"            if third:",
+		"                pass",
+		"",
+	])
+	var guides := FunctionBoundaryGuides.new()
+	guides.attach_to_code(code)
+	code.fold_line(0)
+	assert_bool(code.is_line_folded(0)).is_true()
+
+	for line in range(1, 5):
+		assert_float(guides._visible_line_overlay_rect(line).size.y).is_equal(0.0)
+	assert_float(guides._visible_line_overlay_rect(5).size.y).is_greater(0.0)
+
+	code.unfold_line(0)
+	for line in range(1, 5):
+		assert_float(guides._visible_line_overlay_rect(line).size.y).is_greater(0.0)
+
+	guides.free()
+	code.free()
+
+
+func test_blank_line_after_folded_function_does_not_inherit_hidden_body_indent() -> void:
+	var code := _create_foldable_code([
+		"func folded() -> void:",
+		"    if first:",
+		"        if second:",
+		"            pass",
+		"",
+	])
+	var guides := FunctionBoundaryGuides.new()
+	guides.attach_to_code(code)
+	assert_int(guides._guide_indent_level(4)).is_equal(12)
+
+	code.fold_line(0)
+	assert_int(guides._guide_indent_level(4)).is_equal(0)
+
+	code.unfold_line(0)
+	assert_int(guides._guide_indent_level(4)).is_equal(12)
+
+	guides.free()
+	code.free()
+
+
+func test_blank_line_after_folded_inner_block_preserves_outer_indent_guide() -> void:
+	var code := _create_foldable_code([
+		"func update() -> void:",
+		"    if first:",
+		"        if second:",
+		"            pass",
+		"",
+	])
+	var guides := FunctionBoundaryGuides.new()
+	guides.attach_to_code(code)
+	code.fold_line(1)
+	assert_bool(code.is_line_folded(1)).is_true()
+
+	assert_int(guides._guide_indent_level(4)).is_equal(4)
+
+	guides.free()
+	code.free()
+
+
+func test_visible_line_keeps_overlay_rect_when_column_zero_is_horizontally_scrolled_out() -> void:
+	var code := _create_foldable_code(["    " + "long_value".repeat(50)])
+	code.size = Vector2(180, 200)
+	add_child(code)
+	await get_tree().process_frame
+	code.set_h_scroll(100)
+	await get_tree().process_frame
+	var guides := FunctionBoundaryGuides.new()
+	guides.attach_to_code(code)
+
+	assert_int(code.get_h_scroll()).is_greater(0)
+	assert_int(code.get_rect_at_line_column(0, 0).position.x).is_equal(-1)
+	assert_float(guides._visible_line_overlay_rect(0).size.y).is_greater(0.0)
+
+	guides.free()
+	code.free()
+
+
 func test_indent_guide_block_border_columns_use_full_indent_steps() -> void:
 	assert_array(Array(FunctionBoundaryGuides.indent_guide_block_border_columns(10, 4))).is_equal([0, 4])
 
@@ -292,6 +377,15 @@ func test_moving_caret_between_indent_guides_clears_highlight() -> void:
 
 	guides.free()
 	code.free()
+
+
+func _create_foldable_code(lines: Array[String]) -> CodeEdit:
+	var code := CodeEdit.new()
+	code.size = Vector2(640, 400)
+	code.indent_size = 4
+	code.set_line_folding_enabled(true)
+	code.text = "\n".join(lines)
+	return code
 
 
 func _boundary(header_line: int, end_line: int, indent: int, start_line: int = -1) -> Dictionary:
