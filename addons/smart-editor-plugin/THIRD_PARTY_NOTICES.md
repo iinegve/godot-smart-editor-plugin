@@ -2,7 +2,9 @@
 
 Quick file navigation adapts the resource filesystem traversal and file presentation
 from Script-IDE 2.2.2 by Marius Hanl. Its resource loading and selection behavior
-also informed this implementation.
+also informed this implementation. The script-tab integration follows Script-IDE's
+approach of mirroring Godot's document list and reusing its selection and close
+signals to preserve native navigation and save confirmation.
 
 ## Script-IDE — MIT License
 

@@ -14,6 +14,7 @@ Git change markers, the highlights stripe, visible highlights, function boundary
 
 ## Navigation
 
+- `Show Script Tabs`: show a compact row of tabs above the script editor. Enabled by default. Click to switch; use the active tab's close button or middle-click to close through Godot's normal save confirmation. Right-click opens the native document menu. Tabs follow the document list's sorting and filter.
 - `Double Shift Enabled`: open All after two separate Shift taps within 400 ms. Enabled by default.
 - `Go to File`, `Go to Scene`, `Go to GDScript`, `Go to Resource`, `Go to Other File`, and `Go to Symbol`: configurable shortcuts. Go to File and Go to Other File have no default single shortcut.
 

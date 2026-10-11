@@ -17,6 +17,7 @@ const SETTING_NAVIGATE_SCRIPTS := SETTING_NAVIGATION_PREFIX + &"go_to_gdscript"
 const SETTING_NAVIGATE_RESOURCES := SETTING_NAVIGATION_PREFIX + &"go_to_resource"
 const SETTING_NAVIGATE_OTHER := SETTING_NAVIGATION_PREFIX + &"go_to_other_file"
 const SETTING_NAVIGATE_SYMBOLS := SETTING_NAVIGATION_PREFIX + &"go_to_symbol"
+const SETTING_SCRIPT_TABS_ENABLED := SETTING_NAVIGATION_PREFIX + &"show_script_tabs"
 const SETTING_EXPAND_SHORTCUT := SETTING_EDITOR_PREFIX + &"expand_selection"
 const SETTING_SHRINK_SHORTCUT := SETTING_EDITOR_PREFIX + &"shrink_selection"
 const SETTING_EXTRACT_SHORTCUT := SETTING_EDITOR_PREFIX + &"extract_local_variable"
@@ -134,6 +135,7 @@ static func init_git_changes_settings() -> void:
 
 
 static func init_navigation_settings() -> void:
+	_init_setting(SETTING_SCRIPT_TABS_ENABLED, true, TYPE_BOOL)
 	_init_setting(SETTING_DOUBLE_SHIFT_ENABLED, true, TYPE_BOOL)
 	_init_shortcut_setting(SETTING_NAVIGATE_ALL, Shortcut.new())
 	_init_shortcut_setting(SETTING_NAVIGATE_SCENES, _make_navigation_shortcut(KEY_N))

@@ -12,6 +12,7 @@ Configurable shortcuts can be changed in `Editor Settings` under `Plugin` -> `Sm
 
 ## Quick Navigation
 
+- Script tabs: click to switch, middle-click or the active tab's close button to close, and right-click for Godot's document menu. Use the mouse wheel or arrow buttons to scroll when tabs overflow.
 - `Go to File (All)`: Double Shift (two taps within 400 ms). Ordinary Shift combinations and held Shift do not trigger it. An additional single shortcut can be assigned in settings.
 - `Go to Scene`: `Command+N` on macOS, `Ctrl+N` elsewhere.
 - `Go to GDScript`: `Command+Shift+N` on macOS, `Ctrl+Shift+N` elsewhere.

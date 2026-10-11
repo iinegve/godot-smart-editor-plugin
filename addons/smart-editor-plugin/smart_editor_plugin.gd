@@ -12,6 +12,7 @@ const SmartFunctionBoundaryGuidesController := preload("res://addons/smart-edito
 const GitChangesController := preload("res://addons/smart-editor-plugin/features/git_changes/git_changes_controller.gd")
 const CallHierarchyController := preload("res://addons/smart-editor-plugin/features/call_hierarchy/call_hierarchy_controller.gd")
 const QuickNavigationController := preload("res://addons/smart-editor-plugin/features/quick_navigation/quick_navigation_controller.gd")
+const ScriptTabsController := preload("res://addons/smart-editor-plugin/features/script_tabs/script_tabs_controller.gd")
 const SmartEditorLspService := preload("res://addons/smart-editor-plugin/common/lsp/smart_editor_lsp_service.gd")
 
 var _lsp_service: Node
@@ -24,6 +25,7 @@ var _call_hierarchy_controller: Node
 var _function_boundary_guides_controller: Node
 var _git_changes_controller: Node
 var _quick_navigation_controller: Node
+var _script_tabs_controller: Node
 
 
 func _enter_tree() -> void:
@@ -104,9 +106,16 @@ func _enter_tree() -> void:
 	_quick_navigation_controller = QuickNavigationController.new()
 	_quick_navigation_controller.name = "SmartQuickNavigationController"
 	add_child(_quick_navigation_controller)
+	_script_tabs_controller = ScriptTabsController.new()
+	_script_tabs_controller.name = "SmartScriptTabsController"
+	add_child(_script_tabs_controller)
+	_script_tabs_controller.configure(SmartEditorSettings.SETTING_SCRIPT_TABS_ENABLED)
 
 
 func _exit_tree() -> void:
+	if _script_tabs_controller != null:
+		_script_tabs_controller.queue_free()
+		_script_tabs_controller = null
 	if _quick_navigation_controller != null:
 		_quick_navigation_controller.queue_free()
 		_quick_navigation_controller = null
