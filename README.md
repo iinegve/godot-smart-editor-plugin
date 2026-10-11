@@ -30,6 +30,7 @@ Smart Editor does not try to be a full semantic refactoring engine. Its refactor
 - Smart selection is based on a custom parser for practical editor selection ranges, not Godot's compiler AST. Some unusual syntax can still need more test cases.
 - Highlights are focused on the currently open script, not a project-wide usage view. Occurrences must be fully visible in the editor viewport to be painted; partially clipped symbols may not be highlighted.
 - Git change markers compare the current editor buffer to the file in `HEAD`, not to the Git index. Staged changes therefore remain marked until they are committed. The feature uses the default `git` executable from the editor process's `PATH`; if its one-time startup check fails, it reports a warning and remains inactive until the plugin or editor is reloaded. It also stays hidden for projects outside a Git repository or repositories without a commit.
+- The previous-code popup sizes itself to the displayed content, with scrolling for wide lines or hunks longer than twelve lines. Common leading indentation is removed only in the preview; relative indentation, original line ranges, and Git data are preserved.
 - A path absent from `HEAD`, including a renamed destination, is shown as entirely new. Rename detection, staging, reverting, committing, change navigation, and configurable marker colors are not included.
 
 ## Shortcuts
