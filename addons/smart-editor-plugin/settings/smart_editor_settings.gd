@@ -9,6 +9,14 @@ const SETTING_EDITOR_PREFIX := SETTINGS_PREFIX + &"editor/"
 const SETTING_HIGHLIGHTS_PREFIX := SETTINGS_PREFIX + &"highlights/"
 const SETTING_FUNCTION_BOUNDARY_PREFIX := SETTINGS_PREFIX + &"function_boundary_guides/"
 const SETTING_GIT_CHANGES_PREFIX := SETTINGS_PREFIX + &"git_changes/"
+const SETTING_NAVIGATION_PREFIX := SETTINGS_PREFIX + &"navigation/"
+const SETTING_DOUBLE_SHIFT_ENABLED := SETTING_NAVIGATION_PREFIX + &"double_shift_enabled"
+const SETTING_NAVIGATE_ALL := SETTING_NAVIGATION_PREFIX + &"go_to_file"
+const SETTING_NAVIGATE_SCENES := SETTING_NAVIGATION_PREFIX + &"go_to_scene"
+const SETTING_NAVIGATE_SCRIPTS := SETTING_NAVIGATION_PREFIX + &"go_to_gdscript"
+const SETTING_NAVIGATE_RESOURCES := SETTING_NAVIGATION_PREFIX + &"go_to_resource"
+const SETTING_NAVIGATE_OTHER := SETTING_NAVIGATION_PREFIX + &"go_to_other_file"
+const SETTING_NAVIGATE_SYMBOLS := SETTING_NAVIGATION_PREFIX + &"go_to_symbol"
 const SETTING_EXPAND_SHORTCUT := SETTING_EDITOR_PREFIX + &"expand_selection"
 const SETTING_SHRINK_SHORTCUT := SETTING_EDITOR_PREFIX + &"shrink_selection"
 const SETTING_EXTRACT_SHORTCUT := SETTING_EDITOR_PREFIX + &"extract_local_variable"
@@ -123,6 +131,22 @@ static func init_function_boundary_settings() -> void:
 
 static func init_git_changes_settings() -> void:
 	_init_setting(SETTING_GIT_CHANGE_MARKERS_ENABLED, true, TYPE_BOOL)
+
+
+static func init_navigation_settings() -> void:
+	_init_setting(SETTING_DOUBLE_SHIFT_ENABLED, true, TYPE_BOOL)
+	_init_shortcut_setting(SETTING_NAVIGATE_ALL, Shortcut.new())
+	_init_shortcut_setting(SETTING_NAVIGATE_SCENES, _make_navigation_shortcut(KEY_N))
+	_init_shortcut_setting(SETTING_NAVIGATE_SCRIPTS, _make_navigation_shortcut(KEY_N, true))
+	_init_shortcut_setting(SETTING_NAVIGATE_RESOURCES, _make_navigation_shortcut(KEY_N, true, true))
+	_init_shortcut_setting(SETTING_NAVIGATE_OTHER, Shortcut.new())
+	_init_shortcut_setting(SETTING_NAVIGATE_SYMBOLS, _make_navigation_shortcut(KEY_O))
+
+
+static func _make_navigation_shortcut(keycode: Key, shift_pressed: bool = false, alt_pressed: bool = false) -> Shortcut:
+	var shortcut := _make_shortcut(keycode, false, false, alt_pressed, shift_pressed)
+	shortcut.events[0].command_or_control_autoremap = true
+	return shortcut
 
 
 static func get_setting(path: StringName, default_value: Variant) -> Variant:

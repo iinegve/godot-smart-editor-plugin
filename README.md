@@ -8,6 +8,8 @@ Smart Editor is a Godot editor plugin that adds small IDE-style conveniences to 
 
 ## Features
 
+- Quick file navigation with All, Scenes, GDScript, Resources, and Other tabs, plus Project / Project + Add-ons scope. Open All with Double Shift or GDScript with Command+Shift+N on macOS.
+- Go to Symbol with member fields and constants first, a separator, then methods in one searchable list. Method signatures show parameter names, declared types, and return types; fields show declared types. Small open/closed locks mark public/private naming conventions, with `_` treated as private. Command+O on macOS opens symbols from the current GDScript buffer, including unsaved declarations, without line numbers or colored symbol badges.
 - Git change markers in the left editor gutter: green for added lines, blue for modified lines, and gray for deleted-line boundaries. Click a marker to view the previous `HEAD` lines.
 - Smart expand/shrink selection for GDScript expressions, statements, blocks, function bodies, comments, multiline calls, arrays, dictionaries, and function signatures.
 - Highlights stripe, a narrow mark strip beside the script editor scrollbar showing usages of the symbol under the caret in the current file.
@@ -23,6 +25,8 @@ Smart Editor is a Godot editor plugin that adds small IDE-style conveniences to 
 
 Smart Editor does not try to be a full semantic refactoring engine. Its refactorings are intentionally lightweight and editor-focused.
 
+- Quick file navigation uses Godot's resource filesystem. Files that Godot does not index are not listed; indexed files without a resource loader are selected in the FileSystem dock. Resources covers `.tres`, `.res`, `.gdshader`, and `.gdshaderinc`; other assets appear under Other. Script-IDE should be disabled when using the same navigation shortcuts.
+- Go to Symbol lists named functions and member fields/constants declared in the current GDScript, including inner classes. It reads the live editor text; inherited members, local variables, anonymous functions, and implicit property accessors are not listed. Signatures show explicit type annotations without inferring types or displaying default values. Lock icons reflect naming conventions, not enforced access restrictions.
 - `Rename Symbol` depends on Godot's code analysis service. Renames that affect one open file can be undone as one editor undo action. Renames that affect multiple files cannot revert the whole cross-file rename or changes made to closed files.
 - Variable rename requires a variable declaration. Variables that are left without an explicit declaration cannot be renamed.
 - `Call Hierarchy` is a static call-site view and does not follow string-based dynamic calls such as `call("method")` or `Callable(object, "method")`.
@@ -56,3 +60,5 @@ Smart Editor is developed and tested with Godot `4.7.x`. It may also work with G
 ## License
 
 Smart Editor is available under the MIT license. See `LICENSE` for details.
+
+Quick file navigation adapts resource traversal from Marius Hanl's MIT-licensed Script-IDE. See `THIRD_PARTY_NOTICES.md` in the addon directory.

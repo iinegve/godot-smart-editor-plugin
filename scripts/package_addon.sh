@@ -21,6 +21,9 @@ fi
 rm -f "$OUT"
 mkdir -p "$TMP_DIR/addons"
 rsync -a --exclude='media/' "$ADDON_DIR" "$TMP_DIR/addons/"
+cp "$REPO_ROOT/README.md" "$TMP_DIR/addons/$ADDON_NAME/README.md"
+cp "$REPO_ROOT/SHORTCUTS.md" "$TMP_DIR/addons/$ADDON_NAME/SHORTCUTS.md"
+cp "$REPO_ROOT/SETTINGS.md" "$TMP_DIR/addons/$ADDON_NAME/SETTINGS.md"
 
 (
 	cd "$TMP_DIR"

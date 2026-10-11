@@ -11,6 +11,7 @@ const LspSymbolUsageController := preload("res://addons/smart-editor-plugin/feat
 const SmartFunctionBoundaryGuidesController := preload("res://addons/smart-editor-plugin/features/function_boundary_guides/smart_function_boundary_guides_controller.gd")
 const GitChangesController := preload("res://addons/smart-editor-plugin/features/git_changes/git_changes_controller.gd")
 const CallHierarchyController := preload("res://addons/smart-editor-plugin/features/call_hierarchy/call_hierarchy_controller.gd")
+const QuickNavigationController := preload("res://addons/smart-editor-plugin/features/quick_navigation/quick_navigation_controller.gd")
 const SmartEditorLspService := preload("res://addons/smart-editor-plugin/common/lsp/smart_editor_lsp_service.gd")
 
 var _lsp_service: Node
@@ -22,6 +23,7 @@ var _symbol_usage_controller: Node
 var _call_hierarchy_controller: Node
 var _function_boundary_guides_controller: Node
 var _git_changes_controller: Node
+var _quick_navigation_controller: Node
 
 
 func _enter_tree() -> void:
@@ -98,8 +100,16 @@ func _enter_tree() -> void:
 	add_child(_git_changes_controller)
 	_git_changes_controller.configure(SmartEditorSettings.SETTING_GIT_CHANGE_MARKERS_ENABLED)
 
+	SmartEditorSettings.init_navigation_settings()
+	_quick_navigation_controller = QuickNavigationController.new()
+	_quick_navigation_controller.name = "SmartQuickNavigationController"
+	add_child(_quick_navigation_controller)
+
 
 func _exit_tree() -> void:
+	if _quick_navigation_controller != null:
+		_quick_navigation_controller.queue_free()
+		_quick_navigation_controller = null
 	if _git_changes_controller != null:
 		_git_changes_controller.queue_free()
 		_git_changes_controller = null
