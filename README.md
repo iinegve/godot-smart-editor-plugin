@@ -9,7 +9,7 @@ Smart Editor is a Godot editor plugin that adds small IDE-style conveniences to 
 ## Features
 
 - Script tabs above the main script editor for switching between open documents with the mouse. The active tab has a close button; middle-click also closes, and unsaved-change prompts remain handled by Godot. Tabs scroll when space is limited and follow Godot's document list order and filter.
-- Quick file navigation with All, Scenes, GDScript, Resources, and Other tabs, plus Project / Project + Add-ons scope. Open All with Double Shift or GDScript with Command+Shift+N on macOS.
+- Quick file navigation with All, Scenes, GDScript, Resources, and Other tabs, plus Project / Project + Add-ons scope. File and symbol search also recognize English names typed using the Russian keyboard layout: `level` and `думуд` find the same English names. Open All with Double Shift or GDScript with Command+Shift+N on macOS.
 - Go to Symbol with member fields and constants first, a separator, then methods in one searchable list. Method signatures show parameter names, declared types, and return types; fields show declared types. Small open/closed locks mark public/private naming conventions, with `_` treated as private. Command+O on macOS opens symbols from the current GDScript buffer, including unsaved declarations, without line numbers or colored symbol badges.
 - Git change markers in the left editor gutter: green for added lines, blue for modified lines, and gray for deleted-line boundaries. Click a marker to view the previous `HEAD` lines.
 - Smart expand/shrink selection for GDScript expressions, statements, blocks, function bodies, comments, multiline calls, arrays, dictionaries, and function signatures.

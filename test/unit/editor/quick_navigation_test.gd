@@ -34,6 +34,48 @@ func test_search_matches_all_space_separated_terms_and_paths() -> void:
 	assert_int(NavigationSearch.score("player", "player")).is_less(NavigationSearch.score("player", "enemy.gd", "player/enemy.gd"))
 
 
+func test_russian_keyboard_input_finds_english_file_and_method_names() -> void:
+	assert_int(NavigationSearch.score("думуд", "level.gd")).is_greater_equal(0)
+	assert_int(NavigationSearch.score("ДУМУД", "level.gd")).is_equal(NavigationSearch.score("думуд", "level.gd"))
+	assert_int(NavigationSearch.score("думудюпв", "level.gd")).is_greater_equal(0)
+	assert_int(NavigationSearch.score("пуе_думуд", "get_level")).is_greater_equal(0)
+	assert_int(NavigationSearch.score("дмд", "level")).is_greater_equal(0)
+	assert_int(NavigationSearch.score("гспе", "unit_can_go_there")).is_greater_equal(0)
+
+
+func test_layout_correction_preserves_name_match_ranking() -> void:
+	var exact := NavigationSearch.score("думуд", "level")
+	var prefix := NavigationSearch.score("думуд", "level_loader")
+	var substring := NavigationSearch.score("думуд", "get_level")
+	var abbreviation := NavigationSearch.score("думуд", "load_enemy_velocity")
+
+	assert_int(exact).is_less(prefix)
+	assert_int(prefix).is_less(substring)
+	assert_int(substring).is_less(abbreviation)
+	assert_int(abbreviation).is_greater_equal(0)
+	assert_int(exact).is_less(NavigationSearch.score("думуд", "enemy.gd", "levels/enemy.gd"))
+
+
+func test_layout_correction_supports_multiword_queries_paths_and_mixed_input() -> void:
+	assert_int(NavigationSearch.score("гтше здфнук", "player.gd", "units/player.gd")).is_greater_equal(0)
+	assert_int(NavigationSearch.score("units/здфнук", "player.gd", "units/player.gd")).is_greater_equal(0)
+	assert_int(NavigationSearch.score("гтшеы\\здфнук", "player.gd", "units/player.gd")).is_greater_equal(0)
+	assert_int(NavigationSearch.score("get_думуд", "get_level")).is_greater_equal(0)
+	assert_int(NavigationSearch.score("думуд ьшыыштп", "level.gd")).is_equal(-1)
+
+
+func test_layout_correction_handles_letter_keys_that_produce_punctuation() -> void:
+	assert_int(NavigationSearch.score("уровеньх0ъ", "ehjdtym[0]")).is_greater_equal(0)
+	assert_int(NavigationSearch.score("ёжуэбю", "`;e',.")).is_greater_equal(0)
+
+
+func test_literal_russian_names_still_match_and_win_equal_layout_matches() -> void:
+	assert_int(NavigationSearch.score("УРОВЕНЬ", "уровень")).is_equal(0)
+	assert_int(NavigationSearch.score("уров", "уровень.gd")).is_greater_equal(0)
+	assert_int(NavigationSearch.score("units игрок", "игрок.gd", "units/игрок.gd")).is_greater_equal(0)
+	assert_int(NavigationSearch.score("думуд", "думуд")).is_less(NavigationSearch.score("думуд", "level"))
+
+
 func test_file_categories_include_binary_scenes_resources_and_shaders() -> void:
 	for path in ["res://world.tscn", "res://world.scn"]:
 		assert_int(NavigationFileIndex.category_for_file(path)).is_equal(NavigationFileIndex.Category.SCENES)
@@ -269,6 +311,34 @@ func test_symbol_search_filters_both_groups_with_fields_before_methods() -> void
 	popup._query.text_changed.emit("missing")
 	assert_int(popup._results.item_count).is_equal(0)
 	assert_int(popup._separator_index).is_equal(-1)
+	popup.free()
+
+
+func test_symbol_popup_finds_the_same_members_in_english_and_russian_layouts() -> void:
+	var popup := NavigationPopup.new()
+	popup.configure(false)
+	popup._entries = NavigationSymbols.collect("var level_count: int\nfunc get_level() -> int:\n\treturn 0\nfunc _set_level(value: int) -> void:\n\tpass\nfunc move_unit() -> void:\n\tpass")
+	popup._query.text = "level"
+	popup._refresh()
+	var english_names: Array[String] = []
+	for index in popup._results.item_count:
+		if popup._results.is_item_selectable(index):
+			english_names.append(popup._results.get_item_metadata(index)["name"])
+
+	popup._query.text = "думуд"
+	popup._refresh()
+	var russian_names: Array[String] = []
+	for index in popup._results.item_count:
+		if popup._results.is_item_selectable(index):
+			russian_names.append(popup._results.get_item_metadata(index)["name"])
+
+	assert_array(english_names).is_equal(["level_count", "get_level", "_set_level"])
+	assert_array(russian_names).is_equal(english_names)
+	assert_int(popup._separator_index).is_equal(1)
+	popup._query.text = "пуе_думуд"
+	popup._refresh()
+	assert_int(popup._results.item_count).is_equal(1)
+	assert_str(popup._results.get_item_metadata(0)["name"]).is_equal("get_level")
 	popup.free()
 
 

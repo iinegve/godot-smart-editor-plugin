@@ -20,6 +20,7 @@ Configurable shortcuts can be changed in `Editor Settings` under `Plugin` -> `Sm
 - `Go to Other File`: no default shortcut; assign one in settings or use the Other tab.
 - `Go to Symbol`: `Command+O` on macOS, `Ctrl+O` elsewhere. Member fields and constants appear first, followed by a separator and methods with parameter and return type signatures. Fields show declared types; lock icons use the `_` private naming convention. Search filters both groups at once.
 - Inside either popup: arrows and Page Up/Down select; Enter or double-click opens; Escape closes. Typing searches without changing the selected file or caret. In the file popup, `Ctrl+Tab` / `Ctrl+Shift+Tab` switch tabs.
+- File and symbol search accept English names typed with the Russian keyboard layout: `level` and `думуд` both find English names containing `level`. The query text stays as typed.
 
 These commands take precedence over Godot commands with the same keys. Disable Script-IDE to avoid overlapping navigation shortcuts.
 
